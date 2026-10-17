@@ -61,7 +61,7 @@ def assert_patched_classes(path):
 def package(workspace):
     version = artifact_version(workspace)
     apk_dir = workspace / "build" / "app" / "outputs" / "flutter-apk"
-    gomobile = workspace / "android" / "core" / "build" / "gomobile"
+    gomobile = workspace / "build" / "core" / "gomobile"
     aar = gomobile / "core.aar"
     classes = gomobile / "classes.jar"
     for path in (aar, classes):
