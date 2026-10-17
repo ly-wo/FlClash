@@ -28,14 +28,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          submodules: false
+          submodules: recursive
           persist-credentials: false
 
-      - name: Checkout public submodules
+      - name: Check pinned submodules
         run: |
-          git config --local url."https://github.com/".insteadOf "git@github.com:"
-          git submodule sync --recursive
-          git submodule update --init --recursive
+          test -f core/Clash.Meta/go.mod
+          test -f plugins/tray_manager/packages/tray_manager/pubspec.yaml
           git submodule status --recursive
 
       - name: Setup Flutter
@@ -73,16 +72,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          submodules: false
+          submodules: recursive
           persist-credentials: false
 
-      - name: Checkout public submodules
+      - name: Check pinned submodules
         run: |
-          git config --local url."https://github.com/".insteadOf "git@github.com:"
-          git submodule sync --recursive
-          git submodule update --init --recursive
           test -f core/Clash.Meta/go.mod
           test -f plugins/tray_manager/packages/tray_manager/pubspec.yaml
+          git submodule status --recursive
 
       - name: Setup Go
         uses: actions/setup-go@v5

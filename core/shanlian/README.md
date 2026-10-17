@@ -57,7 +57,7 @@ dart run bin/build_tool.dart android --root-dir D:/Projects/dm/ns/FlClash --arch
 
 `v*` 标签由 FlClash 的 `.github/workflows/android-release.yml` 构建，不走原来的 `build.yaml`。旧 workflow 里的桌面任务还留在文件中，但该 fork 不再用标签触发它，因此不会向 Telegram 或 F-Droid 发送，也不会读取签名密钥。
 
-标签构建使用 Flutter 3.41.9、Go 1.22.10 和 NDK r28c。子模块地址是 SSH，CI 在检出时改写成公开的 `https://github.com/`。产物是三个 ABI 各自可安装的 release APK、包含 `libclash.so` 和头文件的核心库 zip，以及 `SHA256SUMS`。稳定标签会设置 `APP_ENV=stable`。
+标签构建使用 Flutter 3.41.9、Go 1.22.10 和 NDK r28c。`.gitmodules` 使用公开的 `https://github.com/` 地址，CI 按固定 gitlink 递归检出。产物是三个 ABI 各自可安装的 release APK、包含 `libclash.so` 和头文件的核心库 zip，以及 `SHA256SUMS`。稳定标签会设置 `APP_ENV=stable`。
 
 没有 `android/app/keystore.jks` 以及 `local.properties` 里的 `storePassword`、`keyAlias`、`keyPassword` 时，`android/app/build.gradle.kts` 继续用 Android debug 签名，并把应用 ID 加上 `.dev`，安装包名是 `com.follow.clash.dev`。这不是稳定的发布签名，CI 不会生成或提交密钥。
 
