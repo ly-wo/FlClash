@@ -1,3 +1,11 @@
+## v0.8.94
+
+- Build the Android core with the shanlian AnyTLS auth patch
+
+- Publish Android tag builds for all three ABIs
+
+- Use the debug keystore and the .dev application id when no release keystore is configured
+
 ## v0.8.93
 
 - Support custom overwrite

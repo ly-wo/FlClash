@@ -5,8 +5,8 @@ plugins {
     id("com.android.application")
     id("kotlin-android")
     id("dev.flutter.flutter-gradle-plugin")
-    id("com.google.gms.google-services")
-    id("com.google.firebase.crashlytics")
+    id("com.google.gms.google-services") apply false
+    id("com.google.firebase.crashlytics") apply false
 }
 
 val localPropertiesFile = rootProject.file("local.properties")
@@ -106,4 +106,19 @@ dependencies {
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.crashlytics.ndk)
     implementation(libs.firebase.analytics)
+}
+
+val googleServicesFile = file("google-services.json")
+if (googleServicesFile.exists()) {
+    apply(plugin = "com.google.gms.google-services")
+    apply(plugin = "com.google.firebase.crashlytics")
+    val uploadCrashlytics = localProperties.getProperty("crashlyticsUpload") == "true" ||
+        System.getenv("FIREBASE_CRASHLYTICS_UPLOAD") == "true"
+    val crashlytics = extensions.getByName("firebaseCrashlytics")
+    listOf("setMappingFileUploadEnabled", "setNativeSymbolUploadEnabled").forEach { setterName ->
+        val setter = crashlytics.javaClass.methods.firstOrNull { method ->
+            method.name == setterName && method.parameterCount == 1
+        }
+        setter?.invoke(crashlytics, uploadCrashlytics)
+    }
 }

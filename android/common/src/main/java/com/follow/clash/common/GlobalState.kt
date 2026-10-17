@@ -36,12 +36,23 @@ object GlobalState : CoroutineScope by CoroutineScope(Dispatchers.Default) {
     }
 
     fun setCrashlytics(enable: Boolean) {
-        _application?.let {
-            FirebaseApp.initializeApp(it)
-            FirebaseCrashlytics.getInstance().isCrashlyticsCollectionEnabled = enable
-            if (enable) {
-                log("init crashlytics ${it.processName}")
-            }
+        val application = _application ?: return
+        if (!isFirebaseConfigured(application)) {
+            log("skip crashlytics: google-services is not configured")
+            return
         }
+        FirebaseApp.initializeApp(application)
+        FirebaseCrashlytics.getInstance().isCrashlyticsCollectionEnabled = enable
+        if (enable) {
+            log("init crashlytics ${application.processName}")
+        }
+    }
+
+    private fun isFirebaseConfigured(application: Application): Boolean {
+        return application.resources.getIdentifier(
+            "google_app_id",
+            "string",
+            application.packageName,
+        ) != 0
     }
 }

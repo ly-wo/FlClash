@@ -52,3 +52,13 @@ dart run bin/build_tool.dart android --root-dir D:/Projects/dm/ns/FlClash --arch
 缺少 `libclash.so`、`libclash.h` 或 `bride.h` 时，Android 原生构建会直接失败，不会生成一个没有核心的安装包。
 
 这里没有真机和闪连账号，不能把编译成功当成 VPN 或真实节点已经连通。
+
+## Android 标签发布
+
+`v*` 标签由 FlClash 的 `.github/workflows/android-release.yml` 构建，不走原来的 `build.yaml`。旧 workflow 里的桌面任务还留在文件中，但该 fork 不再用标签触发它，因此不会向 Telegram 或 F-Droid 发送，也不会读取签名密钥。
+
+标签构建使用 Flutter 3.41.9、Go 1.22.10 和 NDK r28c。子模块地址是 SSH，CI 在检出时改写成公开的 `https://github.com/`。产物是三个 ABI 各自可安装的 release APK、包含 `libclash.so` 和头文件的核心库 zip，以及 `SHA256SUMS`。稳定标签会设置 `APP_ENV=stable`。
+
+没有 `android/app/keystore.jks` 以及 `local.properties` 里的 `storePassword`、`keyAlias`、`keyPassword` 时，`android/app/build.gradle.kts` 继续用 Android debug 签名，并把应用 ID 加上 `.dev`，安装包名是 `com.follow.clash.dev`。这不是稳定的发布签名，CI 不会生成或提交密钥。
+
+Dart 工程没有 `firebase_core`，也没有 `Firebase.initializeApp`。Android 只在 `google-services.json` 存在时应用 Google Services 和 Crashlytics 插件；文件缺失时插件不应用，`GlobalState.setCrashlytics` 发现没有 `google_app_id` 就跳过初始化。映射和原生符号默认不上传。只有设置 `FIREBASE_CRASHLYTICS_UPLOAD=true` 或 `local.properties` 的 `crashlyticsUpload=true` 时才恢复上传。

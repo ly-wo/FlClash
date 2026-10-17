@@ -1,14 +1,16 @@
 name: build
 
+# This fork does not start the upstream tag workflow.
+# Tag pushes would send artifacts to Telegram and F-Droid and require signing secrets.
+# Desktop jobs remain below for the upstream repository. Android tags use android-release.yml.
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_dispatch:
 env:
   IS_STABLE: ${{ !contains(github.ref, '-') }}
 
 jobs:
   test:
+    if: github.repository == 'chen08209/FlClash'
     name: Test
     runs-on: ubuntu-latest
     steps:
@@ -34,6 +36,7 @@ jobs:
         run: flutter test --reporter expanded
 
   build:
+    if: github.repository == 'chen08209/FlClash'
     needs: [ test ]
     runs-on: ${{ matrix.os }}
     strategy:
@@ -133,6 +136,7 @@ jobs:
           overwrite: true
 
   changelog:
+    if: github.repository == 'chen08209/FlClash'
     runs-on: ubuntu-latest
     needs: [ build ]
     steps:
@@ -188,6 +192,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   upload:
+    if: github.repository == 'chen08209/FlClash'
     permissions: write-all
     needs: [ build ]
     runs-on: ubuntu-latest
