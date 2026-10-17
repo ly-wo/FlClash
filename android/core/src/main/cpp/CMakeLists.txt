@@ -30,9 +30,5 @@ if (EXISTS ${LIB_CLASH_PATH} AND EXISTS ${LIB_CLASH_HEADER_PATH} AND EXISTS ${BR
     target_link_libraries(${CMAKE_PROJECT_NAME}
             clash)
 else ()
-    message("Not found complete libclash output for ABI ${ANDROID_ABI}; building core without LIBCLASH")
-    add_library(${CMAKE_PROJECT_NAME} SHARED
-            jni_helper.cpp
-            core.cpp)
-    target_link_libraries(${CMAKE_PROJECT_NAME})
+    message(FATAL_ERROR "libclash.so, libclash.h, and bride.h are required for ABI ${ANDROID_ABI}. Refusing to build an Android package without the shanlian Go core.")
 endif ()

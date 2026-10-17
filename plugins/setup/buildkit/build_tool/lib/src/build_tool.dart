@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 import 'environment.dart';
 import 'error.dart';
 import 'go_builder.dart';
+import 'shanlian_prepare.dart';
 import 'logging.dart';
 import 'options.dart';
 import 'rust_builder.dart';
@@ -84,8 +85,16 @@ class BuildAndroidCommand extends BuildCommand {
       flutterTargetPlatforms: flutterTargetPlatforms,
     );
 
+    final prepared = await ShanlianCorePrepare(projectRoot: _rootDir).prepare();
+    _log.info(
+      'Shanlian Android core ${prepared.shanlianVersion} from Mihomo ${prepared.mihomoCommit}',
+    );
     final builder = GoBuilder(rootDir: _rootDir, config: config);
-    final corePaths = await builder.buildAll(targets);
+    final corePaths = await builder.buildAll(
+      targets,
+      moduleDir: prepared.moduleDir,
+      goLdflags: prepared.ldflags(config.goLdflags),
+    );
 
     _log.info('Build complete: $corePaths');
   }

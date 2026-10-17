@@ -24,7 +24,24 @@ String _resolveCc(Target target) {
   if (entries.isEmpty) {
     throw BuildException('No NDK prebuilt toolchain found in $prebuiltDir');
   }
-  return p.join(entries.first.path, 'bin', target.ndkCcName);
+  final compiler = Platform.isWindows ? '${target.ndkCcName}.cmd' : target.ndkCcName;
+  return p.join(entries.first.path, 'bin', compiler);
+}
+
+String resolveCoreDirectory({
+  required Target target,
+  required String stockDir,
+  String? moduleDir,
+}) {
+  if (target.isLib) {
+    if (moduleDir == null || moduleDir.isEmpty) {
+      throw BuildException(
+        'Android lib build requires the prepared shanlian core. Refusing to compile the unmodified core.',
+      );
+    }
+    return moduleDir;
+  }
+  return stockDir;
 }
 
 class GoBuilder {
@@ -36,7 +53,11 @@ class GoBuilder {
   String get _corePath => p.join(rootDir, config.coreDir);
   String get _outputPath => p.join(rootDir, config.outputDir);
 
-  Future<String> build(Target target) async {
+  Future<String> build(
+    Target target, {
+    String? moduleDir,
+    String? goLdflags,
+  }) async {
     // Desktop: output directly to libclash/{platform}/
     // Android: output to libclash/android/{abi}/
     final outDir = target.isLib
@@ -48,6 +69,11 @@ class GoBuilder {
         ? '${config.libName}${target.dynamicLibExtension}'
         : '${config.coreName}${target.executableExtension}';
     final outFile = p.join(outDir, fileName);
+    final workDir = resolveCoreDirectory(
+      target: target,
+      stockDir: _corePath,
+      moduleDir: moduleDir,
+    );
 
     final env = <String, String>{
       'GOOS': target.goos,
@@ -62,9 +88,11 @@ class GoBuilder {
       env['CGO_ENABLED'] = '0';
     }
 
+    final flags = goLdflags ?? config.goLdflags;
     final args = [
       'build',
-      '-ldflags=${config.goLdflags}',
+      if (target.isLib) '-mod=readonly',
+      '-ldflags=$flags',
       '-tags=${config.tags}',
       if (target.isLib) '-buildmode=c-shared',
       '-o',
@@ -77,7 +105,7 @@ class GoBuilder {
     _log.info(kSeparator);
 
     await runCommandStream('go', args,
-        workingDirectory: _corePath, environment: env);
+        workingDirectory: workDir, environment: env);
 
     if (target.isLib && target.abi != null) {
       await _adjustAndroidOutput(
@@ -85,15 +113,28 @@ class GoBuilder {
           abiDir: target.abi!,
           archName: target.abi!,
           libPath: outFile,
-          libName: fileName);
+          libName: fileName,
+          coreDir: workDir);
     }
 
     _log.info('Built: $outFile');
     return outFile;
   }
 
-  Future<List<String>> buildAll(List<Target> targets) async {
-    final results = await Future.wait(targets.map(build));
+  Future<List<String>> buildAll(
+    List<Target> targets, {
+    String? moduleDir,
+    String? goLdflags,
+  }) async {
+    if (targets.any((target) => target.isLib) &&
+        (moduleDir == null || moduleDir.isEmpty)) {
+      throw BuildException(
+        'Android lib build requires the prepared shanlian core. Refusing to compile the unmodified core.',
+      );
+    }
+    final results = await Future.wait(targets.map(
+      (target) => build(target, moduleDir: moduleDir, goLdflags: goLdflags),
+    ));
     return results;
   }
 
@@ -103,6 +144,7 @@ class GoBuilder {
     required String archName,
     required String libPath,
     required String libName,
+    required String coreDir,
   }) async {
     final includesPath = p.join(outDir, 'includes', archName);
     final androidCoreMainPath =
@@ -123,7 +165,7 @@ class GoBuilder {
     final abiDirPath = p.join(outDir, abiDir);
     final headerFiles = [
       ...Directory(abiDirPath).listSync(),
-      ...Directory(_corePath).listSync(),
+      ...Directory(coreDir).listSync(),
     ];
     for (final file in headerFiles) {
       if (!file.path.endsWith('.h')) continue;
@@ -134,6 +176,21 @@ class GoBuilder {
       if (file.path.startsWith(abiDirPath)) {
         source.deleteSync();
       }
+    }
+
+    for (final header in ['libclash.h', 'bride.h']) {
+      final installed = File(p.join(cppIncludesPath, header));
+      if (!installed.existsSync()) {
+        throw BuildException(
+          'Android core header $header is missing for $archName. Refusing to continue without the shanlian Go library.',
+        );
+      }
+    }
+    final jniLib = File(p.join(jniLibsPath, libName));
+    if (!jniLib.existsSync()) {
+      throw BuildException(
+        'Android core library $libName is missing for $archName. Refusing to continue without the shanlian Go library.',
+      );
     }
   }
 

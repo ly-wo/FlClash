@@ -1,0 +1,225 @@
+diff --git a/adapter/anytls_shanlian_test.go b/adapter/anytls_shanlian_test.go
+new file mode 100644
+index 0000000..82d1035
+--- /dev/null
++++ b/adapter/anytls_shanlian_test.go
+@@ -0,0 +1,72 @@
++package adapter
++
++import (
++	"strings"
++	"testing"
++)
++
++func TestParseAnyTLSWithShanlianUIDAndNoPassword(t *testing.T) {
++	proxy, err := ParseProxy(map[string]any{
++		"name":         "node",
++		"type":         "anytls",
++		"server":       "127.0.0.1",
++		"port":         443,
++		"shanlian-uid": "0123456789abcdef0123456789ABCDEF",
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer proxy.Close()
++	if proxy.Name() != "node" {
++		t.Fatalf("name = %s", proxy.Name())
++	}
++	if proxy.Type().String() != "AnyTLS" {
++		t.Fatalf("type = %s", proxy.Type().String())
++	}
++}
++
++func TestParseAnyTLSWithPasswordKeepsStandardProxy(t *testing.T) {
++	proxy, err := ParseProxy(map[string]any{
++		"name":     "plain",
++		"type":     "anytls",
++		"server":   "127.0.0.1",
++		"port":     443,
++		"password": "secret",
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer proxy.Close()
++	if proxy.Name() != "plain" {
++		t.Fatalf("name = %s", proxy.Name())
++	}
++}
++
++func TestParseAnyTLSRejectsInvalidShanlianUID(t *testing.T) {
++	_, err := ParseProxy(map[string]any{
++		"name":         "node",
++		"type":         "anytls",
++		"server":       "127.0.0.1",
++		"port":         443,
++		"password":     "secret",
++		"shanlian-uid": "not-a-valid-uid-value",
++	})
++	if err == nil || !strings.Contains(err.Error(), "invalid shanlian-uid: expected 32 hexadecimal characters") {
++		t.Fatalf("error = %v", err)
++	}
++	if err != nil && (strings.Contains(err.Error(), "secret") || strings.Contains(err.Error(), "not-a-valid-uid-value")) {
++		t.Fatal("invalid uid error leaked authentication material")
++	}
++}
++
++func TestParseAnyTLSRejectsMissingPasswordAndUID(t *testing.T) {
++	_, err := ParseProxy(map[string]any{
++		"name":   "node",
++		"type":   "anytls",
++		"server": "127.0.0.1",
++		"port":   443,
++	})
++	if err == nil || !strings.Contains(err.Error(), "missing password") {
++		t.Fatalf("error = %v", err)
++	}
++}
+diff --git a/adapter/outbound/anytls.go b/adapter/outbound/anytls.go
+index dbc86ff..b0bf740 100644
+--- a/adapter/outbound/anytls.go
++++ b/adapter/outbound/anytls.go
+@@ -2,6 +2,9 @@ package outbound
+ 
+ import (
+ 	"context"
++	"encoding/hex"
++	"errors"
++	"fmt"
+ 	"net"
+ 	"strconv"
+ 	"time"
+@@ -27,7 +30,8 @@ type AnyTLSOption struct {
+ 	Name                     string     `proxy:"name"`
+ 	Server                   string     `proxy:"server"`
+ 	Port                     int        `proxy:"port"`
+-	Password                 string     `proxy:"password"`
++	Password                 string     `proxy:"password,omitempty"`
++	ShanlianUID              string     `proxy:"shanlian-uid,omitempty"`
+ 	ALPN                     []string   `proxy:"alpn,omitempty"`
+ 	SNI                      string     `proxy:"sni,omitempty"`
+ 	ECHOpts                  ECHOptions `proxy:"ech-opts,omitempty"`
+@@ -84,6 +88,16 @@ func (t *AnyTLS) Close() error {
+ }
+ 
+ func NewAnyTLS(option AnyTLSOption) (*AnyTLS, error) {
++	var shanlianUID []byte
++	if option.ShanlianUID != "" {
++		var err error
++		shanlianUID, err = hex.DecodeString(option.ShanlianUID)
++		if err != nil || len(shanlianUID) != 16 {
++			return nil, fmt.Errorf("invalid shanlian-uid: expected 32 hexadecimal characters")
++		}
++	} else if option.Password == "" {
++		return nil, errors.New("missing password")
++	}
+ 	addr := net.JoinHostPort(option.Server, strconv.Itoa(option.Port))
+ 	outbound := &AnyTLS{
+ 		Base: NewBase(BaseOption{
+@@ -105,6 +119,7 @@ func NewAnyTLS(option AnyTLSOption) (*AnyTLS, error) {
+ 
+ 	tOption := anytls.ClientConfig{
+ 		Password:                 option.Password,
++		ShanlianUID:              shanlianUID,
+ 		Server:                   M.ParseSocksaddrHostPort(option.Server, uint16(option.Port)),
+ 		Dialer:                   singDialer,
+ 		IdleSessionCheckInterval: time.Duration(option.IdleSessionCheckInterval) * time.Second,
+diff --git a/transport/anytls/client.go b/transport/anytls/client.go
+index dcb679f..686c0e9 100644
+--- a/transport/anytls/client.go
++++ b/transport/anytls/client.go
+@@ -19,6 +19,7 @@ import (
+ 
+ type ClientConfig struct {
+ 	Password                 string
++	ShanlianUID              []byte
+ 	IdleSessionCheckInterval time.Duration
+ 	IdleSessionTimeout       time.Duration
+ 	MinIdleSession           int
+@@ -29,6 +30,8 @@ type ClientConfig struct {
+ 
+ type Client struct {
+ 	passwordSha256 []byte
++	shanlianUID    []byte
++	startedAt      uint64
+ 	tlsConfig      *vmess.TLSConfig
+ 	dialer         N.Dialer
+ 	server         M.Socksaddr
+@@ -40,6 +43,8 @@ func NewClient(ctx context.Context, config ClientConfig) *Client {
+ 	pw := sha256.Sum256([]byte(config.Password))
+ 	c := &Client{
+ 		passwordSha256: pw[:],
++		shanlianUID:    append([]byte(nil), config.ShanlianUID...),
++		startedAt:      uint64(time.Now().UnixMilli()),
+ 		tlsConfig:      config.TLSConfig,
+ 		dialer:         config.Dialer,
+ 		server:         config.Server,
+@@ -50,6 +55,22 @@ func NewClient(ctx context.Context, config ClientConfig) *Client {
+ 	return c
+ }
+ 
++
++func (c *Client) authentication(now uint64) []byte {
++	if len(c.shanlianUID) != 16 {
++		return c.passwordSha256
++	}
++	auth := make([]byte, 32)
++	copy(auth, c.shanlianUID)
++	clock := make([]byte, 16)
++	binary.BigEndian.PutUint64(clock[:8], c.startedAt*10+3)
++	binary.BigEndian.PutUint64(clock[8:], now)
++	for i := range c.shanlianUID {
++		auth[16+i] = c.shanlianUID[i] ^ clock[i]
++	}
++	return auth
++}
++
+ func (c *Client) CreateProxy(ctx context.Context, destination M.Socksaddr) (net.Conn, error) {
+ 	conn, err := c.sessionClient.CreateStream(ctx)
+ 	if err != nil {
+@@ -72,7 +93,7 @@ func (c *Client) createOutboundTLSConnection(ctx context.Context) (net.Conn, err
+ 	b := buf.NewPacket()
+ 	defer b.Release()
+ 
+-	b.Write(c.passwordSha256)
++	b.Write(c.authentication(uint64(time.Now().UnixMilli())))
+ 	var paddingLen int
+ 	if pad := c.padding.Load().GenerateRecordPayloadSizes(0); len(pad) > 0 {
+ 		paddingLen = pad[0]
+diff --git a/transport/anytls/client_shanlian_test.go b/transport/anytls/client_shanlian_test.go
+new file mode 100644
+index 0000000..b5b0570
+--- /dev/null
++++ b/transport/anytls/client_shanlian_test.go
+@@ -0,0 +1,30 @@
++package anytls
++
++import (
++	"bytes"
++	"crypto/sha256"
++	"testing"
++)
++
++func TestAuthenticationDefaultsToStandardPasswordHash(t *testing.T) {
++	want := sha256.Sum256([]byte("secret"))
++	client := &Client{passwordSha256: want[:]}
++	if got := client.authentication(200); !bytes.Equal(got, want[:]) {
++		t.Fatalf("standard AnyTLS authentication changed: %x", got)
++	}
++}
++
++func TestAuthenticationUsesShanlianUIDAndClockWhenConfigured(t *testing.T) {
++	uid := bytes.Repeat([]byte{0x23}, 16)
++	client := &Client{passwordSha256: bytes.Repeat([]byte{0xff}, 32), shanlianUID: uid, startedAt: 100}
++	got := client.authentication(200)
++	if !bytes.Equal(got[:16], uid) {
++		t.Fatalf("uid prefix mismatch: %x", got[:16])
++	}
++	wantClock := []byte{0, 0, 0, 0, 0, 0, 3, 235, 0, 0, 0, 0, 0, 0, 0, 200}
++	for i := range uid {
++		if got[16+i]^uid[i] != wantClock[i] {
++			t.Fatalf("clock byte %d mismatch: %x", i, got[16+i]^uid[i])
++		}
++	}
++}
