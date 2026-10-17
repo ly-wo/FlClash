@@ -1,3 +1,3 @@
+# freezed emits lines of trailing spaces, and generated code is never edited by hand.
+lib/**/generated/** -whitespace
 core/shanlian/flclash-anytls-auth.patch text eol=lf
-core/shanlian/manifest.json text eol=lf
-core/shanlian/README.md text eol=lf

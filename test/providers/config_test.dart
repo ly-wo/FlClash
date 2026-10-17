@@ -1,3 +1,4 @@
+import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/models/models.dart';
 import 'package:fl_clash/providers/config.dart';
@@ -21,13 +22,13 @@ void main() {
       expect(value.onlyStatisticsProxy, false);
       expect(value.autoLaunch, false);
       expect(value.closeConnections, true);
-      expect(value.isAnimateToPage, true);
+      expect(value.tabAnimation, TabAnimation.slide);
     });
 
     test('can update state', () {
-      container.read(appSettingProvider.notifier).update(
-            (_) => const AppSettingProps(autoLaunch: true),
-          );
+      container
+          .read(appSettingProvider.notifier)
+          .update((_) => const AppSettingProps(autoLaunch: true));
       final value = container.read(appSettingProvider);
       expect(value.autoLaunch, true);
     });
@@ -41,9 +42,9 @@ void main() {
     });
 
     test('can update state', () {
-      container.read(windowSettingProvider.notifier).update(
-            (_) => const WindowProps(width: 1024, height: 768),
-          );
+      container
+          .read(windowSettingProvider.notifier)
+          .update((_) => const WindowProps(width: 1024, height: 768));
       final value = container.read(windowSettingProvider);
       expect(value.width, 1024);
       expect(value.height, 768);
@@ -58,9 +59,9 @@ void main() {
     });
 
     test('can update state', () {
-      container.read(vpnSettingProvider.notifier).update(
-            (_) => const VpnProps(enable: false),
-          );
+      container
+          .read(vpnSettingProvider.notifier)
+          .update((_) => const VpnProps(enable: false));
       expect(container.read(vpnSettingProvider).enable, false);
     });
   });
@@ -73,9 +74,9 @@ void main() {
     });
 
     test('can update state', () {
-      container.read(networkSettingProvider.notifier).update(
-            (_) => const NetworkProps(systemProxy: false),
-          );
+      container
+          .read(networkSettingProvider.notifier)
+          .update((_) => const NetworkProps(systemProxy: false));
       expect(container.read(networkSettingProvider).systemProxy, false);
     });
   });
@@ -87,13 +88,10 @@ void main() {
     });
 
     test('can update state', () {
-      container.read(themeSettingProvider.notifier).update(
-            (_) => const ThemeProps(primaryColor: 0xFF123456),
-          );
-      expect(
-        container.read(themeSettingProvider).primaryColor,
-        0xFF123456,
-      );
+      container
+          .read(themeSettingProvider.notifier)
+          .update((_) => const ThemeProps(primaryColor: 0xFF123456));
+      expect(container.read(themeSettingProvider).primaryColor, 0xFF123456);
     });
   });
 
@@ -112,16 +110,37 @@ void main() {
     test('default is null', () {
       expect(container.read(davSettingProvider), null);
     });
+
+    test('can update WebDAV settings', () {
+      const davProps = DAVProps(
+        uri: 'https://dav.example.com',
+        user: 'user',
+        password: 'secret',
+      );
+
+      container.read(davSettingProvider.notifier).update((_) => davProps);
+
+      expect(container.read(davSettingProvider), davProps);
+      expect(container.read(configProvider).davProps?.password, 'secret');
+    });
   });
 
-  group('OverrideDns provider', () {
-    test('default is false', () {
-      expect(container.read(overrideDnsProvider), false);
-    });
+  group('ExcludeSSIDs provider', () {
+    test('reorders with final insertion index semantics', () {
+      container
+          .read(excludeSSIDsProvider.notifier)
+          .update((_) => ['Home', 'Office', 'Cafe', 'Hotel']);
 
-    test('can toggle on', () {
-      container.read(overrideDnsProvider.notifier).update((_) => true);
-      expect(container.read(overrideDnsProvider), true);
+      container.read(excludeSSIDsProvider.notifier).update((value) {
+        return value.copyAndReorder(1, 3);
+      });
+
+      expect(container.read(excludeSSIDsProvider), [
+        'Home',
+        'Cafe',
+        'Hotel',
+        'Office',
+      ]);
     });
   });
 
@@ -129,16 +148,32 @@ void main() {
     test('default is empty list', () {
       expect(container.read(hotKeyActionsProvider), isEmpty);
     });
+
+    test('can update hotkey actions', () {
+      const actions = [
+        HotKeyAction(
+          action: HotAction.start,
+          key: 1,
+          modifiers: {KeyboardModifier.control},
+        ),
+      ];
+
+      container.read(hotKeyActionsProvider.notifier).update((_) => actions);
+
+      expect(container.read(hotKeyActionsProvider), actions);
+    });
   });
 
   group('ProxiesStyleSetting provider', () {
     test('default values', () {
       final value = container.read(proxiesStyleSettingProvider);
-      expect(value.type, ProxiesType.tab);
+      expect(value.type, ProxiesType.list);
     });
 
     test('can update state', () {
-      container.read(proxiesStyleSettingProvider.notifier).update(
+      container
+          .read(proxiesStyleSettingProvider.notifier)
+          .update(
             (_) => const ProxiesStyleProps(sortType: ProxiesSortType.delay),
           );
       expect(
@@ -156,35 +191,60 @@ void main() {
       expect(config.vpnProps.enable, true);
       expect(config.networkProps.systemProxy, true);
       expect(config.currentProfileId, null);
-      expect(config.overrideDns, false);
       expect(config.hotKeyActions, isEmpty);
+      expect(config.patchClashConfig, const PatchClashConfig());
+      expect(config.excludeSSIDs, isEmpty);
     });
 
     test('reflects updated sub-provider values', () {
       container.read(currentProfileIdProvider.notifier).update((_) => 99);
-      container.read(overrideDnsProvider.notifier).update((_) => true);
+      container
+          .read(patchClashConfigProvider.notifier)
+          .update((_) => const PatchClashConfig(mixedPort: 7890));
+      container
+          .read(excludeSSIDsProvider.notifier)
+          .update((_) => ['Office Wi-Fi']);
 
       final config = container.read(configProvider);
       expect(config.currentProfileId, 99);
-      expect(config.overrideDns, true);
+      expect(config.patchClashConfig.mixedPort, 7890);
+      expect(config.excludeSSIDs, ['Office Wi-Fi']);
+    });
+  });
+
+  group('writeConfig', () {
+    test('never leaves a restored open controller without a secret', () {
+      final ref = container.read(Provider<Ref>((ref) => ref));
+
+      writeConfig(
+        ref,
+        const Config(
+          themeProps: ThemeProps(),
+          patchClashConfig: PatchClashConfig(
+            externalController: ExternalControllerStatus.open,
+          ),
+        ),
+      );
+
+      expect(container.read(patchClashConfigProvider).secret, hasLength(32));
     });
   });
 
   group('buildConfigOverrides', () {
     test('produces correct overrides', () {
-      const config = Config(
-        themeProps: ThemeProps(),
-        currentProfileId: 7,
-        overrideDns: true,
-      );
+      const config = Config(themeProps: ThemeProps(), currentProfileId: 7);
       final overrides = buildConfigOverrides(config);
-      expect(overrides.length, 12);
+      expect(overrides.length, 11);
 
       final overrideContainer = ProviderContainer(overrides: overrides);
       addTearDown(overrideContainer.dispose);
 
       expect(overrideContainer.read(currentProfileIdProvider), 7);
-      expect(overrideContainer.read(overrideDnsProvider), true);
+      expect(
+        overrideContainer.read(patchClashConfigProvider),
+        config.patchClashConfig,
+      );
+      expect(overrideContainer.read(excludeSSIDsProvider), config.excludeSSIDs);
       expect(
         overrideContainer.read(appSettingProvider).onlyStatisticsProxy,
         false,

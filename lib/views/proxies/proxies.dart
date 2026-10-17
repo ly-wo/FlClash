@@ -1,95 +1,68 @@
 import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/enum/enum.dart';
-import 'package:fl_clash/models/common.dart';
-import 'package:fl_clash/models/state.dart';
 import 'package:fl_clash/providers/providers.dart';
+import 'package:fl_clash/ui/icons/icons.dart';
 import 'package:fl_clash/views/proxies/list.dart';
-import 'package:fl_clash/views/proxies/providers.dart';
 import 'package:fl_clash/widgets/widgets.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'setting.dart';
 import 'tab.dart';
 
 class ProxiesView extends ConsumerStatefulWidget {
-  const ProxiesView({super.key});
+  const ProxiesView({super.key, this.picker = false});
+
+  /// Leaves the bar only its search and delay test, for picking a proxy from a
+  /// sheet.
+  final bool picker;
 
   @override
   ConsumerState<ProxiesView> createState() => _ProxiesViewState();
 }
 
 class _ProxiesViewState extends ConsumerState<ProxiesView> {
-  final GlobalKey<CommonScaffoldState> _scaffoldKey = GlobalKey();
   final GlobalKey<ProxiesTabViewState> _proxiesTabKey = GlobalKey();
-  bool _hasProviders = false;
+
+  // The same instance on every build, so the bar changing with the current
+  // group or its delay test leaves the page alone.
+  late final _tabView = ProxiesTabView(key: _proxiesTabKey);
   bool _isTab = false;
 
-  List<Widget> _buildActions(BuildContext context) {
+  List<CommonPopupMenuItem> _buildMenuItems(BuildContext context) {
     final appLocalizations = context.appLocalizations;
     return [
-      if (_isTab)
-        IconButton(
-          onPressed: () {
-            _proxiesTabKey.currentState?.scrollToGroupSelected();
-          },
-          icon: const Icon(Icons.adjust, weight: 1),
-        ),
-      CommonPopupBox(
-        targetBuilder: (open) {
-          return IconButton(
-            onPressed: () {
-              final isMobile = ref.read(isMobileViewProvider);
-              open(offset: Offset(0, isMobile ? 0 : 20));
+      CommonPopupMenuItem(
+        glyph: AppGlyphs.sliders,
+        label: appLocalizations.settings,
+        onPressed: () {
+          showSheet(
+            context: context,
+            builder: (_) {
+              return CommonScaffold(
+                body: const ProxiesSetting(),
+                title: appLocalizations.settings,
+              );
             },
-            icon: const Icon(Icons.more_vert),
           );
         },
-        popup: CommonPopupMenu(
-          items: [
-            PopupMenuItemData(
-              icon: Icons.tune,
-              label: appLocalizations.settings,
-              onPressed: () {
-                showSheet(
-                  context: context,
-                  props: const SheetProps(isScrollControlled: true),
-                  builder: (_) {
-                    return AdaptiveSheetScaffold(
-                      body: const ProxiesSetting(),
-                      title: appLocalizations.settings,
-                    );
-                  },
-                );
-              },
-            ),
-            if (_hasProviders)
-              PopupMenuItemData(
-                icon: Icons.poll_outlined,
-                label: appLocalizations.providers,
-                onPressed: () {
-                  showExtend(
-                    context,
-                    builder: (_) {
-                      return const ProvidersView();
-                    },
-                  );
-                },
-              ),
-          ],
-        ),
       ),
     ];
   }
 
-  Widget? _buildFAB() {
-    return _isTab
-        ? DelayTestButton(
-            onClick: () async {
-              await _proxiesTabKey.currentState?.delayTestCurrentGroup();
-            },
-          )
-        : null;
+  IconButtonData? _buildPrimaryAction() {
+    if (!_isTab) {
+      return null;
+    }
+    final isDelayTesting = ref.watch(currentGroupDelayTestingProvider);
+    return IconButtonData(
+      glyph: AppGlyphs.bolt,
+      onPressed: () {
+        _proxiesTabKey.currentState?.delayTestCurrentGroup();
+      },
+      tooltip: context.appLocalizations.delayTest,
+      isLoading: isDelayTesting,
+    );
   }
 
   void _onSearch(String value) {
@@ -99,16 +72,6 @@ class _ProxiesViewState extends ConsumerState<ProxiesView> {
   @override
   void initState() {
     super.initState();
-    ref.listenManual(providersProvider.select((state) => state.isNotEmpty), (
-      prev,
-      next,
-    ) {
-      if (prev != next) {
-        setState(() {
-          _hasProviders = next;
-        });
-      }
-    }, fireImmediately: true);
     ref.listenManual(
       proxiesStyleSettingProvider.select(
         (state) => state.type == ProxiesType.tab,
@@ -122,14 +85,6 @@ class _ProxiesViewState extends ConsumerState<ProxiesView> {
       },
       fireImmediately: true,
     );
-    ref.listenManual(
-      currentPageLabelProvider.select((state) => state == PageLabel.proxies),
-      (prev, next) {
-        if (prev != next && next == false) {
-          _scaffoldKey.currentState?.handleExitSearching();
-        }
-      },
-    );
   }
 
   @override
@@ -138,16 +93,28 @@ class _ProxiesViewState extends ConsumerState<ProxiesView> {
       proxiesStyleSettingProvider.select((state) => state.type),
     );
     final isLoading = ref.watch(loadingProvider(LoadingTag.proxies));
+    final picker = widget.picker;
+    final primaryAction = _buildPrimaryAction();
     return CommonScaffold(
-      key: _scaffoldKey,
       isLoading: isLoading,
       resizeToAvoidBottomInset: false,
-      floatingActionButton: _buildFAB(),
-      actions: _buildActions(context),
+      primaryAction: primaryAction,
+      searchActions: [?primaryAction],
+      iconActions: [
+        if (_isTab && !picker)
+          IconButtonData(
+            glyph: AppGlyphs.locate,
+            onPressed: () {
+              _proxiesTabKey.currentState?.scrollToGroupSelected();
+            },
+            tooltip: context.appLocalizations.scrollToSelected,
+          ),
+      ],
+      menuItems: picker ? const [] : _buildMenuItems(context),
       title: context.appLocalizations.proxies,
       searchState: AppBarSearchState(onSearch: _onSearch),
       body: switch (proxiesType) {
-        ProxiesType.tab => ProxiesTabView(key: _proxiesTabKey),
+        ProxiesType.tab => _tabView,
         ProxiesType.list => const ProxiesListView(),
       },
     );

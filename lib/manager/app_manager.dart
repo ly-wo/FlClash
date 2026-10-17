@@ -1,15 +1,16 @@
 import 'dart:async';
 
 import 'package:fl_clash/common/common.dart';
-import 'package:fl_clash/core/controller.dart';
+import 'package:fl_clash/common/system_dns.dart';
 import 'package:fl_clash/enum/enum.dart';
-import 'package:fl_clash/manager/window_manager.dart';
+import 'package:fl_clash/models/models.dart';
 import 'package:fl_clash/providers/providers.dart';
 import 'package:fl_clash/state.dart';
+import 'package:fl_clash/ui/ui.dart';
+import 'package:fl_clash/widgets/icon.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
 class AppStateManager extends ConsumerStatefulWidget {
   final Widget child;
@@ -26,49 +27,45 @@ class _AppStateManagerState extends ConsumerState<AppStateManager>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    ref.listenManual(checkIpProvider, (prev, next) {
-      if (prev != next && next.a && next.c) {
-        ref.read(networkDetectionProvider.notifier).startCheck();
+    // A desktop build started to the tray mounts while hidden, and a paused
+    // render never runs a post-frame callback.
+    scheduleMicrotask(() {
+      if (mounted) {
+        _updateVisible(WidgetsBinding.instance.lifecycleState);
       }
     });
     ref.listenManual(configProvider, (prev, next) {
       if (prev != next) {
-        globalState.container
-            .read(storeActionProvider.notifier)
-            .savePreferencesDebounce();
+        ref.read(storeActionProvider.notifier).savePreferencesDebounce();
       }
     });
+    ref.listenManual(groupsProvider, (prev, next) {
+      if (prev != next) {
+        unawaited(precacheTargetIcons(next.map((group) => group.icon)));
+      }
+    }, fireImmediately: true);
+    ref.listenManual(iconSetsProvider, (_, next) {
+      if (next.value case final iconSets?) {
+        unawaited(
+          precacheTargetIcons(iconSets.map((iconSet) => iconSet.cover)),
+        );
+      }
+    }, fireImmediately: true);
     ref.listenManual(needUpdateGroupsProvider, (prev, next) {
       if (prev != next) {
-        globalState.container
-            .read(proxiesActionProvider.notifier)
-            .updateGroupsDebounce();
+        ref.read(proxiesActionProvider.notifier).updateGroupsDebounce();
       }
     });
     ref.listenManual(suspendProvider, (prev, next) {
-      final isStart = ref.read(isStartProvider);
-      if (prev != next && isStart) {
-        debouncer.call(FunctionTag.suspend, () async {
-          if (next == true) {
-            await coreController.stopListener();
-          } else {
-            await coreController.startListener();
-          }
-          ref.read(checkIpNumProvider.notifier).add();
-        });
+      if (prev != next) {
+        ref.read(setupActionProvider.notifier).syncSuspend();
       }
     });
-    if (system.isMacOS) {
-      ref.listenManual(autoSetSystemDnsStateProvider, (prev, next) async {
-        if (prev == next) {
-          return;
-        }
-        if (next.a == true && next.b == true) {
-          macOS?.updateDns(false);
-        } else {
-          macOS?.updateDns(true);
-        }
-      });
+    final systemDns = systemDnsCoordinator;
+    if (systemDns != null) {
+      ref.listenManual(shouldPatchSystemDnsProvider, (prev, next) {
+        unawaited(systemDns.sync(next));
+      }, fireImmediately: true);
     }
   }
 
@@ -78,62 +75,112 @@ class _AppStateManagerState extends ConsumerState<AppStateManager>
     super.dispose();
   }
 
+  void _updateVisible(AppLifecycleState? state) {
+    ref.read(appVisibleProvider.notifier).value = switch (state) {
+      null || AppLifecycleState.resumed || AppLifecycleState.inactive => true,
+      AppLifecycleState.hidden ||
+      AppLifecycleState.paused ||
+      AppLifecycleState.detached => false,
+    };
+  }
+
   @override
   Future<void> didChangeAppLifecycleState(AppLifecycleState state) async {
-    commonPrint.log('$state');
+    _updateVisible(state);
     if (state == AppLifecycleState.resumed) {
-      permissions.check();
-      render?.resume();
+      unawaited(ref.read(locationPermissionsProvider.notifier).refresh());
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        final ref = globalState.container;
-        ref.read(setupActionProvider.notifier).tryCheckIp();
-        if (system.isAndroid) {
-          ref.read(coreActionProvider.notifier).tryStartCore();
+        if (!mounted) {
+          return;
         }
+        ref.read(routeTrackerProvider.notifier).markResumed();
       });
     }
   }
 
   @override
   void didChangePlatformBrightness() {
-    globalState.container.read(themeActionProvider.notifier).updateBrightness();
+    ref.read(themeActionProvider.notifier).updateBrightness();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Listener(
-      onPointerHover: (_) {
-        render?.resume();
-      },
-      child: widget.child,
-    );
+    return widget.child;
   }
 }
 
-class AppEnvManager extends StatelessWidget {
+class AppEnvManager extends ConsumerWidget {
   final Widget child;
 
   const AppEnvManager({super.key, required this.child});
 
+  String? _bannerMessage({required bool safeMode}) {
+    if (safeMode) {
+      return 'SAFE MODE';
+    }
+    if (!globalState.isPre) {
+      return null;
+    }
+    return kDebugMode ? 'DEBUG' : globalState.appEnv.toUpperCase();
+  }
+
   @override
-  Widget build(BuildContext context) {
-    if (kDebugMode) {
-      if (globalState.isPre) {
-        return Banner(
-          message: 'DEBUG',
-          location: BannerLocation.topEnd,
-          child: child,
-        );
-      }
+  Widget build(BuildContext context, WidgetRef ref) {
+    final message = _bannerMessage(safeMode: ref.watch(safeModeProvider));
+    if (message == null) {
+      return child;
     }
-    if (globalState.isPre) {
-      return Banner(
-        message: 'PRE',
-        location: BannerLocation.topEnd,
-        child: child,
-      );
-    }
-    return child;
+    return Banner(
+      message: message,
+      location: BannerLocation.topEnd,
+      child: child,
+    );
+  }
+}
+
+class _Sidebar extends ConsumerWidget {
+  const _Sidebar({
+    required this.items,
+    required this.currentIndex,
+    required this.viewMode,
+    required this.onSelected,
+  });
+
+  final List<NavigationItem> items;
+  final int currentIndex;
+  final ViewMode viewMode;
+  final void Function(int index) onSelected;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final canExpand = canExpandSidebar(viewMode);
+    final sidebarExpanded = ref.watch(
+      appSettingProvider.select((state) => state.sidebarExpanded),
+    );
+    final version = ref.watch(versionProvider);
+    return NavigationSidebar(
+      destinations: [
+        for (final item in items)
+          SidebarDestination(glyph: item.glyph, label: item.label.label),
+      ],
+      selectedIndex: currentIndex,
+      expanded: canExpand && sidebarExpanded,
+      onSelected: onSelected,
+      onToggle: canExpand
+          ? () {
+              ref
+                  .read(appSettingProvider.notifier)
+                  .update(
+                    (state) =>
+                        state.copyWith(sidebarExpanded: !state.sidebarExpanded),
+                  );
+            }
+          : null,
+      windowControls: windowControlsOverSidebar(
+        isMacOS: system.isMacOS,
+        version: version,
+      ),
+    );
   }
 }
 
@@ -141,38 +188,6 @@ class AppSidebarContainer extends ConsumerWidget {
   final Widget child;
 
   const AppSidebarContainer({super.key, required this.child});
-
-  // Widget _buildLoading() {
-  //   return Consumer(
-  //     builder: (_, ref, _) {
-  //       final loading = ref.watch(loadingProvider);
-  //       final isMobileView = ref.watch(isMobileViewProvider);
-  //       return loading && !isMobileView
-  //           ? RotatedBox(
-  //               quarterTurns: 1,
-  //               child: const LinearProgressIndicator(),
-  //             )
-  //           : Container();
-  //     },
-  //   );
-  // }
-
-  Widget _buildBackground({
-    required BuildContext context,
-    required Widget child,
-  }) {
-    return Material(color: context.colorScheme.surfaceContainer, child: child);
-    // if (!system.isMacOS) {
-    //   return Material(
-    //     color: context.colorScheme.surfaceContainer,
-    //     child: child,
-    //   );
-    // }
-    // return child;
-    // return TransparentMacOSSidebar(
-    //   child: Material(color: Colors.transparent, child: child),
-    // );
-  }
 
   void _updateSideBarWidth(WidgetRef ref, double contentWidth) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -182,109 +197,80 @@ class AppSidebarContainer extends ConsumerWidget {
     });
   }
 
-  void _handleToPage(PageLabel pageLabel) {
-    globalState.container
-        .read(currentPageLabelProvider.notifier)
-        .toPage(pageLabel);
+  void _handleToPage(WidgetRef ref, PageLabel pageLabel) {
+    final focusNode = FocusManager.instance.primaryFocus;
+    final focusContext = focusNode?.context;
+    final preserveNavigationFocus =
+        focusContext?.findAncestorWidgetOfExactType<NavigationSidebar>() !=
+        null;
+    ref.read(currentPageLabelProvider.notifier).toPage(pageLabel);
+    if (!preserveNavigationFocus || focusNode == null) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (focusNode.context != null && focusNode.canRequestFocus) {
+        focusNode.requestFocus();
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final navigationState = ref.watch(navigationStateProvider);
     final navigationItems = navigationState.navigationItems;
-    final isMobileView = navigationState.viewMode == ViewMode.mobile;
-    if (isMobileView) {
-      return child;
-    }
+    final viewMode = navigationState.viewMode;
     final currentIndex = navigationState.currentIndex;
-    final showLabel = ref.watch(appSettingProvider).showLabel;
-    return Row(
-      children: [
-        _buildBackground(
-          context: context,
-          child: SafeArea(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                if (system.isMacOS) const SizedBox(height: 22),
-                const SizedBox(height: 10),
-                if (!system.isMacOS) ...[
-                  const ClipRect(child: AppIcon()),
-                  const SizedBox(height: 12),
-                ],
-                Expanded(
-                  child: ScrollConfiguration(
-                    behavior: HiddenBarScrollBehavior(),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: NavigationRail(
-                            scrollable: true,
-                            minExtendedWidth: 200,
-                            backgroundColor: Colors.transparent,
-                            selectedLabelTextStyle: context
-                                .textTheme
-                                .labelLarge!
-                                .copyWith(color: context.colorScheme.onSurface),
-                            unselectedLabelTextStyle: context
-                                .textTheme
-                                .labelLarge!
-                                .copyWith(color: context.colorScheme.onSurface),
-                            destinations: navigationItems
-                                .map(
-                                  (e) => NavigationRailDestination(
-                                    icon: e.icon,
-                                    label: Text(Intl.message(e.label.name)),
-                                  ),
-                                )
-                                .toList(),
-                            onDestinationSelected: (index) {
-                              _handleToPage(navigationItems[index].label);
-                            },
-                            extended: false,
-                            selectedIndex: currentIndex,
-                            labelType: showLabel
-                                ? NavigationRailLabelType.all
-                                : NavigationRailLabelType.none,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+    final blur = ref.watch(windowBlurProvider);
+    final page = SurfaceLevel.page.colorOf(context.colorScheme);
+    final chrome = context.colorScheme.chromeSurface;
+    void onSelected(int index) {
+      _handleToPage(ref, navigationItems[index].label);
+    }
+
+    final hasSidebar = viewMode != ViewMode.mobile;
+    final isLtr = Directionality.of(context) == TextDirection.ltr;
+    return Container(
+      color: blur ? Colors.transparent : page,
+      child: Row(
+        children: [
+          AnimatedVisibility.sidebar(
+            visible: hasSidebar,
+            child: Material(
+              color: blur
+                  ? chrome.withValues(alpha: kSidebarBlurOpacity)
+                  : chrome,
+              shape: BorderDirectional(end: Divider.createBorderSide(context)),
+              child: MediaQuery.removePadding(
+                context: context,
+                removeLeft: !isLtr,
+                removeRight: isLtr,
+                child: _Sidebar(
+                  items: navigationItems,
+                  currentIndex: currentIndex,
+                  viewMode: viewMode,
+                  onSelected: onSelected,
                 ),
-                const SizedBox(height: 16),
-                IconButton(
-                  onPressed: () {
-                    ref
-                        .read(appSettingProvider.notifier)
-                        .update(
-                          (state) =>
-                              state.copyWith(showLabel: !state.showLabel),
-                        );
-                  },
-                  icon: Icon(
-                    Icons.menu,
-                    color: context.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: 16),
-              ],
+              ),
             ),
           ),
-        ),
-        Expanded(
-          flex: 1,
-          child: ClipRect(
-            child: LayoutBuilder(
-              builder: (_, constraints) {
-                _updateSideBarWidth(ref, constraints.maxWidth);
-                return child;
-              },
+          Expanded(
+            flex: 1,
+            child: ClipRect(
+              child: LayoutBuilder(
+                builder: (_, constraints) {
+                  _updateSideBarWidth(ref, constraints.maxWidth);
+                  return MediaQuery.removePadding(
+                    context: context,
+                    removeLeft: hasSidebar && isLtr,
+                    removeRight: hasSidebar && !isLtr,
+                    child: child,
+                  );
+                },
+              ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

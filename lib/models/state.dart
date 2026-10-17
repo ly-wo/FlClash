@@ -1,12 +1,11 @@
-import 'package:collection/collection.dart';
 import 'package:fl_clash/enum/enum.dart';
-import 'package:flutter/material.dart';
+import 'package:fl_clash/ui/color.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 
 import 'app.dart';
 import 'clash_config.dart';
 import 'common.dart';
-import 'config.dart';
 import 'core.dart';
 import 'profile.dart';
 
@@ -14,41 +13,8 @@ part 'generated/state.freezed.dart';
 part 'generated/state.g.dart';
 
 @freezed
-abstract class VM<A> with _$VM<A> {
-  const factory VM(A a) = _VM;
-}
-
-@freezed
-abstract class VM2<A, B> with _$VM2<A, B> {
-  const factory VM2(A a, B b) = _VM2;
-}
-
-@freezed
-abstract class VM3<A, B, C> with _$VM3<A, B, C> {
-  const factory VM3(A a, B b, C c) = _VM3;
-}
-
-@freezed
-abstract class VM4<A, B, C, D> with _$VM4<A, B, C, D> {
-  const factory VM4(A a, B b, C c, D d) = _VM4;
-}
-
-@freezed
-abstract class VM5<A, B, C, D, E> with _$VM5<A, B, C, D, E> {
-  const factory VM5(A a, B b, C c, D d, E e) = _VM5;
-}
-
-@freezed
-abstract class ActivateState with _$ActivateState {
-  const factory ActivateState({required bool active}) = _ActivateState;
-}
-
-@freezed
-abstract class InitState with _$InitState {
-  const factory InitState({
-    required Config config,
-    required List<Profile> profiles,
-  }) = _InitState;
+abstract class SelectValue<T> with _$SelectValue<T> {
+  const factory SelectValue(T value) = _SelectValue;
 }
 
 @freezed
@@ -56,6 +22,7 @@ abstract class CommonMessage with _$CommonMessage {
   const factory CommonMessage({
     required String id,
     required String text,
+    @Default(MessageLevel.info) MessageLevel level,
     @Default(Duration(seconds: 3)) Duration duration,
     MessageActionState? actionState,
   }) = _CommonMessage;
@@ -70,54 +37,11 @@ abstract class MessageActionState with _$MessageActionState {
 }
 
 @freezed
-abstract class AppBarState with _$AppBarState {
-  const factory AppBarState({
-    @Default([]) List<Widget> actions,
-    AppBarSearchState? searchState,
-    AppBarEditState? editState,
-  }) = _AppBarState;
-}
-
-@freezed
-abstract class AppBarSearchState with _$AppBarSearchState {
-  const factory AppBarSearchState({
-    required Function(String) onSearch,
-    @Default(true) bool autoAddSearch,
-    @Default(null) String? query,
-  }) = _AppBarSearchState;
-}
-
-@freezed
-abstract class AppBarEditState with _$AppBarEditState {
-  const factory AppBarEditState({
-    @Default(0) int editCount,
-    required Function() onExit,
-  }) = _AppBarEditState;
-}
-
-@freezed
-abstract class StartButtonState with _$StartButtonState {
-  const factory StartButtonState({
-    required bool isPreload,
-    required bool hasProfile,
-  }) = _StartButtonState;
-}
-
-@freezed
 abstract class ProfilesState with _$ProfilesState {
   const factory ProfilesState({
     required List<Profile> profiles,
     required int? currentProfileId,
-    required int columns,
   }) = _ProfilesState;
-}
-
-@freezed
-abstract class NetworkDetectionState with _$NetworkDetectionState {
-  const factory NetworkDetectionState({
-    required bool isLoading,
-    required IpInfo? ipInfo,
-  }) = _NetworkDetectionState;
 }
 
 @freezed
@@ -129,11 +53,12 @@ abstract class TrayState with _$TrayState {
     required bool systemProxy,
     required bool tunEnable,
     required bool isStart,
-    required String? locale,
-    required Brightness? brightness,
+    @Default(false) bool suspended,
     required List<Group> groups,
     required Map<String, String> selectedMap,
     required bool showTrayTitle,
+    required bool safeMode,
+    @Default({}) Map<HotAction, HotKeyAction> hotKeys,
   }) = _TrayState;
 }
 
@@ -173,7 +98,6 @@ abstract class ProxiesListState with _$ProxiesListState {
     required List<Group> groups,
     required Set<String> currentUnfoldSet,
     required ProxyCardType proxyCardType,
-    required int columns,
   }) = _ProxiesListState;
 }
 
@@ -183,21 +107,15 @@ abstract class ProxiesTabState with _$ProxiesTabState {
     required List<Group> groups,
     required String? currentGroupName,
     required ProxyCardType proxyCardType,
-    required int columns,
   }) = _ProxiesTabState;
 }
 
 @freezed
-abstract class ProxyGroupSelectorState with _$ProxyGroupSelectorState {
-  const factory ProxyGroupSelectorState({
-    required String? testUrl,
-    required ProxiesSortType proxiesSortType,
-    required ProxyCardType proxyCardType,
-    required num sortNum,
-    required GroupType groupType,
-    required List<Proxy> proxies,
-    required int columns,
-  }) = _ProxyGroupSelectorState;
+abstract class ProxiesTabControllerState with _$ProxiesTabControllerState {
+  const factory ProxiesTabControllerState({
+    required List<String> groupNames,
+    required String? currentGroupName,
+  }) = _ProxiesTabControllerState;
 }
 
 @freezed
@@ -205,64 +123,6 @@ abstract class MoreToolsSelectorState with _$MoreToolsSelectorState {
   const factory MoreToolsSelectorState({
     required List<NavigationItem> navigationItems,
   }) = _MoreToolsSelectorState;
-}
-
-@freezed
-abstract class PackageListSelectorState with _$PackageListSelectorState {
-  const factory PackageListSelectorState({
-    required List<Package> packages,
-    required AccessControlProps accessControlProps,
-  }) = _PackageListSelectorState;
-}
-
-extension PackageListSelectorStateExt on PackageListSelectorState {
-  List<Package> get list {
-    final isFilterSystemApp = accessControlProps.isFilterSystemApp;
-    final isFilterNonInternetApp = accessControlProps.isFilterNonInternetApp;
-    return packages
-        .where(
-          (item) =>
-              (isFilterSystemApp ? item.system == false : true) &&
-              (isFilterNonInternetApp ? item.internet == true : true),
-        )
-        .toList();
-  }
-
-  List<Package> getSortList(List<String> selectedList) {
-    final sort = accessControlProps.sort;
-
-    return list.sorted((a, b) {
-      final isSelectA = selectedList.contains(a.packageName);
-      final isSelectB = selectedList.contains(b.packageName);
-
-      if (isSelectA != isSelectB) {
-        return isSelectA ? -1 : 1;
-      }
-      return switch (sort) {
-        AccessSortType.none => 0,
-        AccessSortType.name => a.label.compareTo(b.label),
-        AccessSortType.time => b.lastUpdateTime.compareTo(a.lastUpdateTime),
-      };
-    });
-  }
-}
-
-@freezed
-abstract class ProxiesListHeaderSelectorState
-    with _$ProxiesListHeaderSelectorState {
-  const factory ProxiesListHeaderSelectorState({
-    required double offset,
-    required int currentIndex,
-  }) = _ProxiesListHeaderSelectorState;
-}
-
-@freezed
-abstract class ProxiesActionsState with _$ProxiesActionsState {
-  const factory ProxiesActionsState({
-    required PageLabel pageLabel,
-    required ProxiesType type,
-    required bool hasProviders,
-  }) = _ProxiesActionsState;
 }
 
 @freezed
@@ -276,10 +136,35 @@ abstract class ProxyState with _$ProxyState {
 }
 
 @freezed
+abstract class ThemeColorsSelectorState with _$ThemeColorsSelectorState {
+  const factory ThemeColorsSelectorState({
+    required int? primaryColor,
+    required List<int> primaryColors,
+    required ColorStyle colorStyle,
+    required bool isDefault,
+  }) = _ThemeColorsSelectorState;
+}
+
+@freezed
+abstract class SystemProxySelectorState with _$SystemProxySelectorState {
+  const factory SystemProxySelectorState({
+    required bool systemProxy,
+    required List<String> bypassDomain,
+  }) = _SystemProxySelectorState;
+}
+
+@freezed
+abstract class CurrentProfileSelectorState with _$CurrentProfileSelectorState {
+  const factory CurrentProfileSelectorState({
+    required String label,
+    required Map<String, String> selectedMap,
+  }) = _CurrentProfileSelectorState;
+}
+
+@freezed
 abstract class DashboardState with _$DashboardState {
   const factory DashboardState({
     required List<DashboardWidget> dashboardWidgets,
-    required double contentWidth,
   }) = _DashboardState;
 }
 
@@ -293,24 +178,17 @@ abstract class SelectedProxyState with _$SelectedProxyState {
 }
 
 @freezed
-abstract class VpnState with _$VpnState {
-  const factory VpnState({
-    required TunStack stack,
-    required VpnProps vpnProps,
-  }) = _VpnState;
-}
-
-@freezed
 abstract class SharedState with _$SharedState {
   const factory SharedState({
     SetupParams? setupParams,
     VpnOptions? vpnOptions,
     required String stopTip,
     required String startTip,
+    required String localNetworkTip,
     required String currentProfileName,
     required String stopText,
     required bool onlyStatisticsProxy,
-    required bool crashlytics,
+    @Default(true) bool showStopAction,
   }) = _SharedState;
 
   factory SharedState.fromJson(Map<String, Object?> json) =>
@@ -339,12 +217,21 @@ abstract class MakeRealProfileState with _$MakeRealProfileState {
     required int profileId,
     required Map<String, dynamic> rawConfig,
     required PatchClashConfig realPatchConfig,
-    required bool overrideDns,
+    @Default(ProfileOverrides()) ProfileOverrides overrides,
+    @Default(false) bool bypassPrivateRoute,
+
+    /// Set for a subscription, whose own DNS values an emptied entry replaces.
+    @Default(false) bool keepEmptyDnsOverrides,
     required bool appendSystemDns,
     required List<ProxyGroup> proxyGroups,
     required List<Rule> rules,
     required List<Rule> addedRules,
     required String defaultUA,
+    @Default([]) List<String> authentication,
+    @Default({}) Map<String, dynamic> injectedProxyProviders,
+    @Default({}) Map<String, dynamic> injectedRuleProviders,
+    String? matchTarget,
+    @Default(false) bool safeMode,
   }) = _MakeRealProfileState;
 }
 
@@ -355,8 +242,11 @@ abstract class MigrationData with _$MigrationData {
     @Default([]) List<Rule> rules,
     @Default([]) List<Script> scripts,
     @Default([]) List<Profile> profiles,
-    @Default([]) List<ProfileRuleLink> links,
+    @Default([]) List<DisabledRule> disabledRules,
     @Default([]) List<ProxyGroup> proxyGroups,
+    @Default([]) List<ClashProvider> clashProviders,
+    @Default([]) List<CustomProxy> customProxies,
+    @Default([]) List<ProxyDialer> proxyDialers,
   }) = _MigrationData;
 }
 
@@ -365,51 +255,17 @@ abstract class SetupState with _$SetupState {
   const factory SetupState({
     required int? profileId,
     required int? profileLastUpdateDate,
-    required OverwriteType overwriteType,
+    required ProfileType profileType,
+    required ExtendType extendType,
     required List<Rule> rules,
     required List<ProxyGroup> proxyGroups,
     required List<Rule> addedRules,
     required Script? script,
-    required bool overrideDns,
-    required Dns dns,
+    required ProfileOverrides overrides,
+    @Default([]) List<ClashProvider> clashProviders,
+    @Default({}) Map<String, int> profileProviders,
+    @Default([]) List<CustomProxy> appProxies,
+    @Default({}) Map<int, String> proxyDialers,
+    String? matchTarget,
   }) = _SetupState;
 }
-
-// extension SetupStateExt on SetupState {
-//   bool needSetup(SetupState? lastSetupState) {
-//     if (lastSetupState == null) {
-//       return false;
-//     }
-//     if (profileId != lastSetupState.profileId) {
-//       return true;
-//     }
-//     if (profileLastUpdateDate != lastSetupState.profileLastUpdateDate) {
-//       return true;
-//     }
-//     final scriptIsChange = script != lastSetupState.script;
-//     if (overwriteType != lastSetupState.overwriteType) {
-//       if (!ruleListEquality.equals(addedRules, lastSetupState.addedRules) ||
-//           scriptIsChange) {
-//         return true;
-//       }
-//     } else {
-//       if (overwriteType == OverwriteType.script) {
-//         if (scriptIsChange) {
-//           return true;
-//         }
-//       }
-//       if (overwriteType == OverwriteType.standard) {
-//         if (!ruleListEquality.equals(addedRules, lastSetupState.addedRules)) {
-//           return true;
-//         }
-//       }
-//     }
-//     if (overrideDns != lastSetupState.overrideDns) {
-//       return true;
-//     }
-//     if (overrideDns == true && dns != lastSetupState.dns) {
-//       return true;
-//     }
-//     return false;
-//   }
-// }

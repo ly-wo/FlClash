@@ -1,6 +1,6 @@
 diff --git a/adapter/anytls_shanlian_test.go b/adapter/anytls_shanlian_test.go
 new file mode 100644
-index 0000000..82d1035
+index 00000000..82d10359
 --- /dev/null
 +++ b/adapter/anytls_shanlian_test.go
 @@ -0,0 +1,72 @@
@@ -77,30 +77,30 @@ index 0000000..82d1035
 +	}
 +}
 diff --git a/adapter/outbound/anytls.go b/adapter/outbound/anytls.go
-index dbc86ff..b0bf740 100644
+index 99786614..e12cd071 100644
 --- a/adapter/outbound/anytls.go
 +++ b/adapter/outbound/anytls.go
-@@ -2,6 +2,9 @@ package outbound
+@@ -2,7 +2,9 @@ package outbound
  
  import (
  	"context"
 +	"encoding/hex"
-+	"errors"
+ 	"errors"
 +	"fmt"
  	"net"
  	"strconv"
- 	"time"
-@@ -27,7 +30,8 @@ type AnyTLSOption struct {
- 	Name                     string     `proxy:"name"`
- 	Server                   string     `proxy:"server"`
- 	Port                     int        `proxy:"port"`
--	Password                 string     `proxy:"password"`
-+	Password                 string     `proxy:"password,omitempty"`
-+	ShanlianUID              string     `proxy:"shanlian-uid,omitempty"`
- 	ALPN                     []string   `proxy:"alpn,omitempty"`
- 	SNI                      string     `proxy:"sni,omitempty"`
- 	ECHOpts                  ECHOptions `proxy:"ech-opts,omitempty"`
-@@ -84,6 +88,16 @@ func (t *AnyTLS) Close() error {
+ 	"strings"
+@@ -29,7 +31,8 @@ type AnyTLSOption struct {
+ 	Name                     string           `proxy:"name"`
+ 	Server                   string           `proxy:"server"`
+ 	Port                     int              `proxy:"port"`
+-	Password                 string           `proxy:"password"`
++	Password                 string           `proxy:"password,omitempty"`
++	ShanlianUID              string           `proxy:"shanlian-uid,omitempty"`
+ 	ALPN                     []string         `proxy:"alpn,omitempty"`
+ 	SNI                      string           `proxy:"sni,omitempty"`
+ 	ECHOpts                  ECHOptions       `proxy:"ech-opts,omitempty"`
+@@ -92,6 +95,16 @@ func (t *AnyTLS) Close() error {
  }
  
  func NewAnyTLS(option AnyTLSOption) (*AnyTLS, error) {
@@ -117,16 +117,16 @@ index dbc86ff..b0bf740 100644
  	addr := net.JoinHostPort(option.Server, strconv.Itoa(option.Port))
  	outbound := &AnyTLS{
  		Base: NewBase(BaseOption{
-@@ -105,6 +119,7 @@ func NewAnyTLS(option AnyTLSOption) (*AnyTLS, error) {
+@@ -113,6 +126,7 @@ func NewAnyTLS(option AnyTLSOption) (*AnyTLS, error) {
  
  	tOption := anytls.ClientConfig{
  		Password:                 option.Password,
 +		ShanlianUID:              shanlianUID,
  		Server:                   M.ParseSocksaddrHostPort(option.Server, uint16(option.Port)),
  		Dialer:                   singDialer,
- 		IdleSessionCheckInterval: time.Duration(option.IdleSessionCheckInterval) * time.Second,
+ 		ClientMetadata:           option.ClientMetadata,
 diff --git a/transport/anytls/client.go b/transport/anytls/client.go
-index dcb679f..686c0e9 100644
+index fce4d4a6..252e1c76 100644
 --- a/transport/anytls/client.go
 +++ b/transport/anytls/client.go
 @@ -19,6 +19,7 @@ import (
@@ -134,10 +134,10 @@ index dcb679f..686c0e9 100644
  type ClientConfig struct {
  	Password                 string
 +	ShanlianUID              []byte
+ 	ClientMetadata           string
  	IdleSessionCheckInterval time.Duration
  	IdleSessionTimeout       time.Duration
- 	MinIdleSession           int
-@@ -29,6 +30,8 @@ type ClientConfig struct {
+@@ -31,6 +32,8 @@ type ClientConfig struct {
  
  type Client struct {
  	passwordSha256 []byte
@@ -146,7 +146,7 @@ index dcb679f..686c0e9 100644
  	tlsConfig      *vmess.TLSConfig
  	dialer         N.Dialer
  	server         M.Socksaddr
-@@ -40,6 +43,8 @@ func NewClient(ctx context.Context, config ClientConfig) *Client {
+@@ -42,6 +45,8 @@ func NewClient(ctx context.Context, config ClientConfig) *Client {
  	pw := sha256.Sum256([]byte(config.Password))
  	c := &Client{
  		passwordSha256: pw[:],
@@ -155,11 +155,10 @@ index dcb679f..686c0e9 100644
  		tlsConfig:      config.TLSConfig,
  		dialer:         config.Dialer,
  		server:         config.Server,
-@@ -50,6 +55,22 @@ func NewClient(ctx context.Context, config ClientConfig) *Client {
+@@ -52,6 +57,21 @@ func NewClient(ctx context.Context, config ClientConfig) *Client {
  	return c
  }
  
-+
 +func (c *Client) authentication(now uint64) []byte {
 +	if len(c.shanlianUID) != 16 {
 +		return c.passwordSha256
@@ -178,7 +177,7 @@ index dcb679f..686c0e9 100644
  func (c *Client) CreateProxy(ctx context.Context, destination M.Socksaddr) (net.Conn, error) {
  	conn, err := c.sessionClient.CreateStream(ctx)
  	if err != nil {
-@@ -72,7 +93,7 @@ func (c *Client) createOutboundTLSConnection(ctx context.Context) (net.Conn, err
+@@ -74,7 +94,7 @@ func (c *Client) createOutboundTLSConnection(ctx context.Context) (net.Conn, err
  	b := buf.NewPacket()
  	defer b.Release()
  
@@ -189,7 +188,7 @@ index dcb679f..686c0e9 100644
  		paddingLen = pad[0]
 diff --git a/transport/anytls/client_shanlian_test.go b/transport/anytls/client_shanlian_test.go
 new file mode 100644
-index 0000000..b5b0570
+index 00000000..b5b05705
 --- /dev/null
 +++ b/transport/anytls/client_shanlian_test.go
 @@ -0,0 +1,30 @@

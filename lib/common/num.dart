@@ -1,12 +1,15 @@
-import 'dart:math';
-
 import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/models/common.dart';
-import 'package:fl_clash/state.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+import 'package:intl/intl.dart' show NumberFormat;
+import 'package:material_ui/material_ui.dart';
+
+/// Pinned to English so every locale reads K and M, never 万 or тыс.
+final _compactFormat = NumberFormat.compact(locale: 'en');
 
 extension NumExt on num {
+  String get compact => _compactFormat.format(this);
+
   String fixed({int decimals = 2}) {
     String formatted = toStringAsFixed(decimals);
     if (formatted.contains('.')) {
@@ -16,14 +19,6 @@ extension NumExt on num {
       }
     }
     return formatted;
-  }
-
-  double get ap {
-    return this * (1 + (globalState.theme.textScaleFactor - 1) * 0.5);
-  }
-
-  double get mAp {
-    return this * min((1 + (globalState.theme.textScaleFactor - 1) * 0.5), 1);
   }
 
   TrafficShow get traffic {
@@ -57,7 +52,7 @@ extension NumExt on num {
 
 extension DoubleExt on double {
   bool moreOrEqual(double value) {
-    return this > value || (value - this).abs() < precisionErrorTolerance + 1;
+    return this > value || (value - this).abs() < precisionErrorTolerance;
   }
 }
 
@@ -68,24 +63,5 @@ extension OffsetExt on Offset {
 
   double getMainAxisOffset(Axis direction) {
     return direction == Axis.vertical ? dy : dx;
-  }
-
-  bool less(Offset offset) {
-    if (dy < offset.dy) {
-      return true;
-    }
-    if (dy == offset.dy && dx < offset.dx) {
-      return true;
-    }
-    return false;
-  }
-}
-
-extension RectExt on Rect {
-  bool doRectIntersect(Rect rect) {
-    return left < rect.right &&
-        right > rect.left &&
-        top < rect.bottom &&
-        bottom > rect.top;
   }
 }

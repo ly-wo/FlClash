@@ -1,381 +1,355 @@
-import 'dart:math';
+import 'dart:math' as math;
 
-import 'package:defer_pointer/defer_pointer.dart';
-import 'package:dynamic_color/dynamic_color.dart';
 import 'package:fl_clash/common/common.dart';
+import 'package:fl_clash/core/core.dart';
 import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/providers/providers.dart';
-import 'package:fl_clash/state.dart';
+import 'package:fl_clash/ui/icons/icons.dart';
 import 'package:fl_clash/widgets/widgets.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:material_ui/material_ui.dart';
 
-import 'widgets/start_button.dart';
+import 'edit.dart';
+import 'layout.dart';
+import 'style.dart';
+import 'widget_registry.dart';
+import 'widgets/core_status_button.dart';
+import 'widgets/widgets.dart';
 
-typedef _IsEditWidgetBuilder = Widget Function(bool isEdit);
+// Narrower columns leave the service grid's cells too tight for a status, so
+// the grid takes the memory card's column instead.
+const _memoryColumnMin = 290.0;
+
+const _maxColumnWidth = 440.0;
 
 class DashboardView extends ConsumerStatefulWidget {
-  const DashboardView({super.key});
+  const DashboardView({super.key, this.platform});
+
+  /// The host's platform when null.
+  final SupportPlatform? platform;
 
   @override
   ConsumerState<DashboardView> createState() => _DashboardViewState();
 }
 
 class _DashboardViewState extends ConsumerState<DashboardView> {
-  final key = GlobalKey<SuperGridState>();
-  final _isEditNotifier = ValueNotifier<bool>(false);
-  final _addedWidgetsNotifier = ValueNotifier<List<GridItem>>([]);
+  var _editing = false;
+  final _cardKeys = <DashboardWidget, GlobalKey>{};
+
+  void _setEditing(bool editing) {
+    setState(() => _editing = editing);
+  }
+
+  GlobalKey _cardKeyOf(DashboardWidget widget) =>
+      _cardKeys.putIfAbsent(widget, GlobalKey.new);
 
   @override
-  void dispose() {
-    _isEditNotifier.dispose();
-    _addedWidgetsNotifier.dispose();
-    super.dispose();
-  }
-
-  Widget _buildIsEdit(_IsEditWidgetBuilder builder) {
-    return ValueListenableBuilder(
-      valueListenable: _isEditNotifier,
-      builder: (_, isEdit, _) {
-        return builder(isEdit);
-      },
-    );
-  }
-
-  Future<void> _handleConnection() async {
-    final coreStatus = ref.read(coreStatusProvider);
-    if (coreStatus == CoreStatus.connecting) {
-      return;
+  Widget build(BuildContext context) {
+    final platform = widget.platform ?? SupportPlatform.currentPlatform;
+    final viewSize = ref.watch(viewSizeProvider);
+    final sideWidth = ref.watch(sideWidthProvider);
+    final scale = math.max(1.0, MediaQuery.textScalerOf(context).scale(1));
+    final size = Size(viewSize.width - sideWidth, viewSize.height) / scale;
+    final editable = !DashboardDensity.of(size).isDesktop;
+    if (!editable) {
+      _editing = false;
     }
-    final tip = coreStatus == CoreStatus.connected
-        ? context.appLocalizations.forceRestartCoreTip
-        : context.appLocalizations.restartCoreTip;
-    final res = await globalState.showMessage(message: TextSpan(text: tip));
-    if (res != true) {
-      return;
-    }
-    globalState.container.read(coreActionProvider.notifier).restartCore();
-  }
-
-  List<Widget> _buildActions(bool isEdit) {
+    final editing = _editing;
+    final gap = cardSpacingOf(context, ref.watch(viewModeProvider));
     final appLocalizations = context.appLocalizations;
-    return [
-      if (!isEdit)
-        Consumer(
-          builder: (_, ref, _) {
-            final coreStatus = ref.watch(coreStatusProvider);
-            return Tooltip(
-              message: appLocalizations.coreStatus,
-              child: FadeScaleBox(
-                alignment: Alignment.centerRight,
-                child: coreStatus == CoreStatus.connected
-                    ? IconButton.filled(
-                        visualDensity: VisualDensity.compact,
-                        iconSize: 20,
-                        padding: EdgeInsets.zero,
-                        style: IconButton.styleFrom(
-                          backgroundColor: Colors.green.harmonizeWith(
-                            context.colorScheme.primary,
-                          ),
-                          foregroundColor: switch (Theme.brightnessOf(
-                            context,
-                          )) {
-                            Brightness.light =>
-                              context.colorScheme.onSurfaceVariant,
-                            Brightness.dark =>
-                              context.colorScheme.onPrimaryFixedVariant,
-                          },
-                        ),
-                        onPressed: _handleConnection,
-                        icon: const Icon(Icons.check, fontWeight: FontWeight.w900),
-                      )
-                    : FilledButton.icon(
-                        key: ValueKey(coreStatus),
-                        onPressed: _handleConnection,
-                        style: FilledButton.styleFrom(
-                          visualDensity: VisualDensity.compact,
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          backgroundColor: switch (coreStatus) {
-                            CoreStatus.connecting => null,
-                            CoreStatus.connected => Colors.greenAccent,
-                            CoreStatus.disconnected =>
-                              context.colorScheme.error,
-                          },
-                          foregroundColor: switch (coreStatus) {
-                            CoreStatus.connecting => null,
-                            CoreStatus.connected => switch (Theme.brightnessOf(
-                              context,
-                            )) {
-                              Brightness.light =>
-                                context.colorScheme.onSurfaceVariant,
-                              Brightness.dark => null,
-                            },
-                            CoreStatus.disconnected =>
-                              context.colorScheme.onError,
-                          },
-                        ),
-                        icon: SizedBox(
-                          height: globalState.measure.bodyMediumHeight,
-                          width: globalState.measure.bodyMediumHeight,
-                          child: switch (coreStatus) {
-                            CoreStatus.connecting => Padding(
-                              padding: const EdgeInsets.all(2),
-                              child: CircularProgressIndicator(
-                                strokeWidth: 3,
-                                color: context.colorScheme.onPrimary,
-                                backgroundColor: Colors.transparent,
-                              ),
-                            ),
-                            CoreStatus.connected => const Icon(
-                              Icons.check_sharp,
-                              fontWeight: FontWeight.w900,
-                            ),
-                            CoreStatus.disconnected => const Icon(
-                              Icons.restart_alt_sharp,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          },
-                        ),
-                        label: Text(switch (coreStatus) {
-                          CoreStatus.connecting => appLocalizations.connecting,
-                          CoreStatus.connected => appLocalizations.connected,
-                          CoreStatus.disconnected =>
-                            appLocalizations.disconnected,
-                        }),
-                      ),
-              ),
-            );
-          },
-        ),
-      if (isEdit)
-        ValueListenableBuilder(
-          valueListenable: _addedWidgetsNotifier,
-          builder: (_, addedChildren, child) {
-            if (addedChildren.isEmpty) {
-              return Container();
-            }
-            return child!;
-          },
-          child: IconButton(
-            onPressed: () {
-              _showAddWidgetsModal();
-            },
-            icon: const Icon(Icons.add_circle),
+    return CommonScaffold(
+      backgroundColor: DashboardColors.of(context).page,
+      title: editing
+          ? appLocalizations.editDashboard
+          : appLocalizations.dashboard,
+      backAction: editing ? () => _setEditing(false) : null,
+      actions: [if (!editing && coreLib == null) const CoreStatusButton()],
+      confirmationAction: editing
+          ? IconButtonData(
+              glyph: AppGlyphs.check,
+              tooltip: appLocalizations.done,
+              onPressed: () => _setEditing(false),
+            )
+          : null,
+      iconActions: [
+        if (editable && !editing)
+          IconButtonData(
+            glyph: AppGlyphs.edit,
+            tooltip: appLocalizations.editDashboard,
+            onPressed: () => _setEditing(true),
           ),
-        ),
-      FadeRotationScaleBox(
-        child: isEdit
-            ? IconButton(
-                key: const ValueKey(true),
-                icon: const Icon(Icons.save, key: ValueKey('save-icon')),
-                onPressed: _handleUpdateIsEdit,
-              )
-            : IconButton(
-                key: const ValueKey(false),
-                icon: const Icon(Icons.edit, key: ValueKey('edit-icon')),
-                onPressed: _handleUpdateIsEdit,
-              ),
-      ),
-    ];
-  }
-
-  void _showAddWidgetsModal() {
-    showSheet(
-      builder: (_) {
-        return ValueListenableBuilder(
-          valueListenable: _addedWidgetsNotifier,
-          builder: (_, value, _) {
-            return AdaptiveSheetScaffold(
-              body: _AddDashboardWidgetModal(
-                items: value,
-                onAdd: (gridItem) {
-                  key.currentState?.handleAdd(gridItem);
-                },
-              ),
-              title: context.appLocalizations.add,
-            );
-          },
-        );
-      },
-      context: context,
-    );
-  }
-
-  Future<void> _handleUpdateIsEdit() async {
-    if (_isEditNotifier.value == true) {
-      await _handleSave();
-    }
-    _isEditNotifier.value = !_isEditNotifier.value;
-  }
-
-  Future<void> _handleSave() async {
-    final currentState = key.currentState;
-    if (currentState == null) {
-      return;
-    }
-    if (mounted && currentState.children.isNotEmpty) {
-      await currentState.isTransformCompleter;
-      final dashboardWidgets = currentState.children
-          .map((item) => DashboardWidget.getDashboardWidget(item))
-          .toList();
-      ref
-          .read(appSettingProvider.notifier)
-          .update(
-            (state) => state.copyWith(dashboardWidgets: dashboardWidgets),
-          );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final dashboardState = ref.watch(dashboardStateProvider);
-    final columns = max(4 * ((dashboardState.contentWidth / 280).ceil()), 8);
-    final spacing = 14.mAp;
-    final children = [
-      ...dashboardState.dashboardWidgets
-          .where(
-            (item) => item.platforms.contains(SupportPlatform.currentPlatform),
-          )
-          .map((item) => item.widget),
-    ];
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _addedWidgetsNotifier.value = DashboardWidget.values
-          .where(
-            (item) =>
-                !children.contains(item.widget) &&
-                item.platforms.contains(SupportPlatform.currentPlatform),
-          )
-          .map((item) => item.widget)
-          .toList();
-    });
-    return _buildIsEdit(
-      (isEdit) => CommonScaffold(
-        title: context.appLocalizations.dashboard,
-        actions: _buildActions(isEdit),
-        floatingActionButton: const StartButton(),
-        body: Align(
-          alignment: Alignment.topCenter,
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16).copyWith(bottom: 88),
-            child: isEdit
-                ? SystemBackBlock(
-                    child: CommonPopScope(
-                      child: SuperGrid(
-                        key: key,
-                        crossAxisCount: columns,
-                        crossAxisSpacing: spacing,
-                        mainAxisSpacing: spacing,
-                        children: children,
-                        onUpdate: () {
-                          _handleSave();
-                        },
-                      ),
-                      onPop: (context) {
-                        _handleUpdateIsEdit();
-                        return false;
-                      },
-                    ),
+      ],
+      // The providers learn a resize a frame late, too late for the cards.
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final room = constraints.biggest / scale;
+          final layout = DashboardDensity.of(room);
+          return DashboardDensityScope(
+            density: layout,
+            scale: scale,
+            child: layout.isDesktop
+                ? _DesktopDashboard(
+                    platform: platform,
+                    columns: dashboardColumnsOf(room.width),
+                    gap: gap,
                   )
-                : Grid(
-                    crossAxisCount: columns,
-                    crossAxisSpacing: spacing,
-                    mainAxisSpacing: spacing,
-                    children: children,
+                : _MobileDashboard(
+                    platform: platform,
+                    gap: gap,
+                    editing: editing,
+                    cardKeyOf: _cardKeyOf,
+                    onDone: () => _setEditing(false),
                   ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }
 }
 
-class _AddDashboardWidgetModal extends StatelessWidget {
-  final List<GridItem> items;
-  final Function(GridItem item) onAdd;
+/// Four columns fill the window, the tables taking what the rows above them
+/// leave. A window too short for the tables, and every two column one, gets
+/// the summary cards instead, so no list scrolls inside a page that scrolls.
+class _DesktopDashboard extends StatelessWidget {
+  const _DesktopDashboard({
+    required this.platform,
+    required this.columns,
+    required this.gap,
+  });
 
-  const _AddDashboardWidgetModal({required this.items, required this.onAdd});
+  final SupportPlatform platform;
+  final int columns;
+  final double gap;
 
   @override
   Widget build(BuildContext context) {
-    return DeferredPointerHandler(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Grid(
-          crossAxisCount: 8,
-          crossAxisSpacing: 16,
-          mainAxisSpacing: 16,
-          children: items
-              .map(
-                (item) => item.wrap(
-                  builder: (child) {
-                    return _AddedContainer(
-                      onAdd: () {
-                        onAdd(item);
-                      },
-                      child: child,
-                    );
-                  },
+    final density = DashboardDensityScope.of(context);
+    final compact = density.isCompact;
+    final scale = DashboardDensityScope.scaleOf(context);
+    final base = EdgeInsetsDirectional.fromSTEB(
+      16,
+      MediaQuery.paddingOf(context).top,
+      24,
+      24 + MediaQuery.paddingOf(context).bottom,
+    );
+    final topHeight = (compact ? 176 : 208) * scale;
+    final controlHeight = (compact ? 56 : 64) * scale;
+    final middleHeight = (compact ? 152 : 176) * scale;
+    final tablesHeight = connectionsTableMinHeight(density, scale);
+    final summaryHeight = (compact ? 112 : 120) * scale;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final room =
+            constraints.maxWidth - base.horizontal - gap * (columns - 1);
+        final column = math.min(room / columns, _maxColumnWidth * scale);
+        final inset = (room - column * columns) / 2;
+        final padding = base.copyWith(
+          start: base.start + inset,
+          end: base.end + inset,
+        );
+        double span(int columns) => column * columns + gap * (columns - 1);
+        Widget row(List<(int, Widget)> cards) => Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          spacing: gap,
+          children: [
+            for (final (columns, card) in cards)
+              SizedBox(
+                width: span(columns),
+                child: RepaintBoundary(child: card),
+              ),
+          ],
+        );
+        Widget sized(double height, Widget child) =>
+            SizedBox(height: height, child: child);
+        final switches =
+            DashboardWidget.networkTakeover.platforms.contains(platform)
+            ? const [
+                (1, NetworkTakeoverTile(TakeoverSwitch.systemProxy)),
+                (1, NetworkTakeoverTile(TakeoverSwitch.tun)),
+              ]
+            : const [(2, VpnTile())];
+        final half = columns ~/ 2;
+        final summaries = row([
+          (half, const ConnectionStatsCard()),
+          (half, const ProxyGroupsSummaryCard()),
+        ]);
+        if (columns == 2) {
+          return SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: padding,
+            child: Column(
+              spacing: gap,
+              children: [
+                sized(
+                  topHeight,
+                  const RepaintBoundary(child: CurrentOutboundCard()),
                 ),
-              )
-              .toList(),
-        ),
-      ),
-    );
-  }
-}
-
-class _AddedContainer extends StatefulWidget {
-  final Widget child;
-  final VoidCallback onAdd;
-
-  const _AddedContainer({required this.child, required this.onAdd});
-
-  @override
-  State<_AddedContainer> createState() => _AddedContainerState();
-}
-
-class _AddedContainerState extends State<_AddedContainer> {
-  @override
-  void initState() {
-    super.initState();
-  }
-
-  @override
-  void didUpdateWidget(_AddedContainer oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.child != widget.child) {}
-  }
-
-  Future<void> _handleAdd() async {
-    widget.onAdd();
-  }
-
-  @override
-  void dispose() {
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        ActivateBox(child: widget.child),
-        Positioned(
-          top: -8,
-          right: -8,
-          child: DeferPointer(
-            child: SizedBox(
-              width: 24,
-              height: 24,
-              child: IconButton.filled(
-                iconSize: 20,
-                padding: const EdgeInsets.all(2),
-                onPressed: _handleAdd,
-                icon: const Icon(Icons.add),
+                sized(
+                  topHeight,
+                  row(const [
+                    (1, SpeedCard(direction: TrafficDirection.upload)),
+                    (1, SpeedCard(direction: TrafficDirection.download)),
+                  ]),
+                ),
+                sized(
+                  controlHeight,
+                  const RepaintBoundary(child: OutboundModeBar()),
+                ),
+                sized(controlHeight, row(switches)),
+                sized(
+                  middleHeight,
+                  row(const [(1, IntranetIpCard()), (1, ProfilesCard())]),
+                ),
+                sized(
+                  middleHeight,
+                  row(const [(1, ServiceStatusCard()), (1, MemoryInfo())]),
+                ),
+                sized(summaryHeight, summaries),
+              ],
+            ),
+          );
+        }
+        final rows = [
+          sized(
+            topHeight,
+            row(const [
+              (2, CurrentOutboundCard()),
+              (1, SpeedCard(direction: TrafficDirection.upload)),
+              (1, SpeedCard(direction: TrafficDirection.download)),
+            ]),
+          ),
+          sized(
+            controlHeight,
+            row([(2, const OutboundModeBar()), ...switches]),
+          ),
+          sized(
+            middleHeight,
+            row([
+              (1, const IntranetIpCard()),
+              (1, const ProfilesCard()),
+              if (column >= _memoryColumnMin * scale) ...[
+                (1, const ServiceStatusCard()),
+                (1, const MemoryInfo()),
+              ] else
+                (2, const ServiceStatusCard()),
+            ]),
+          ),
+        ];
+        final rowsHeight =
+            padding.vertical +
+            topHeight +
+            controlHeight +
+            middleHeight +
+            gap * 3;
+        final tablesFit = constraints.maxHeight >= rowsHeight + tablesHeight;
+        final fills = constraints.maxHeight >= rowsHeight + summaryHeight;
+        return SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: SizedBox(
+            height: fills ? constraints.maxHeight : null,
+            child: Padding(
+              padding: padding,
+              child: Column(
+                spacing: gap,
+                children: [
+                  ...rows,
+                  if (tablesFit)
+                    Expanded(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        spacing: gap,
+                        children: const [
+                          Expanded(
+                            flex: 3,
+                            child: RepaintBoundary(
+                              child: ConnectionsTableCard(),
+                            ),
+                          ),
+                          Expanded(
+                            flex: 2,
+                            child: RepaintBoundary(child: ProxyGroupsCard()),
+                          ),
+                        ],
+                      ),
+                    )
+                  else if (fills)
+                    Expanded(child: summaries)
+                  else
+                    sized(summaryHeight, summaries),
+                ],
               ),
             ),
           ),
+        );
+      },
+    );
+  }
+}
+
+class _MobileDashboard extends ConsumerWidget {
+  const _MobileDashboard({
+    required this.platform,
+    required this.gap,
+    required this.editing,
+    required this.cardKeyOf,
+    required this.onDone,
+  });
+
+  final SupportPlatform platform;
+  final double gap;
+  final bool editing;
+  final GlobalKey Function(DashboardWidget widget) cardKeyOf;
+  final VoidCallback onDone;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final saved = ref.watch(
+      dashboardStateProvider.select((state) => state.dashboardWidgets),
+    );
+    final top = MediaQuery.paddingOf(context).top + 4;
+    final bottom = 16 + BottomInsetScope.of(context);
+    return CustomScrollView(
+      // A viewport per card lays them all out and holds the scroll end still.
+      scrollCacheExtent: editing
+          ? ScrollCacheExtent.viewport(DashboardWidget.values.length.toDouble())
+          : null,
+      slivers: [
+        SliverLayoutBuilder(
+          builder: (context, constraints) {
+            final side = dashboardMobileSideOf(constraints.crossAxisExtent);
+            final widgets = [
+              for (final widget in saved)
+                if (widget.platforms.contains(platform)) widget,
+            ];
+            if (editing) {
+              return DashboardEditor(
+                platform: platform,
+                widgets: widgets,
+                cardKeyOf: cardKeyOf,
+                padding: EdgeInsets.fromLTRB(side, top, side, bottom),
+                gap: gap,
+                onDone: onDone,
+              );
+            }
+            return SliverPadding(
+              padding: EdgeInsets.fromLTRB(side, top, side, bottom),
+              // A lazy list estimates the cards it has not laid out from the
+              // ones it has; cards this uneven move the scroll end as it goes.
+              sliver: SliverToBoxAdapter(
+                child: Column(
+                  spacing: gap,
+                  children: [
+                    for (final widget in widgets)
+                      RepaintBoundary(
+                        key: cardKeyOf(widget),
+                        child: widget.card,
+                      ),
+                  ],
+                ),
+              ),
+            );
+          },
         ),
       ],
     );

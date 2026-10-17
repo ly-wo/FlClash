@@ -1,13 +1,8 @@
-import 'dart:async';
-import 'dart:typed_data';
-
-import 'package:dio/dio.dart';
-import 'package:fl_clash/common/constant.dart';
-import 'package:fl_clash/common/request.dart';
+import 'package:fl_clash/common/fixed.dart';
 import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/models/models.dart';
 import 'package:fl_clash/providers/app.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:riverpod/riverpod.dart';
 
@@ -22,14 +17,26 @@ void main() {
     container.dispose();
   });
 
-  group('RealTunEnable provider', () {
-    test('default is false', () {
-      expect(container.read(realTunEnableProvider), false);
+  group('AuthorizedTunEnable provider', () {
+    test('default is none', () {
+      expect(
+        container.read(authorizedTunEnableProvider),
+        TunAuthorizationState.none,
+      );
     });
 
-    test('can update to true', () {
-      container.read(realTunEnableProvider.notifier).update((_) => true);
-      expect(container.read(realTunEnableProvider), true);
+    test('can store authorized and unauthorized results', () {
+      final notifier = container.read(authorizedTunEnableProvider.notifier);
+      notifier.update((_) => TunAuthorizationState.authorized);
+      expect(
+        container.read(authorizedTunEnableProvider),
+        TunAuthorizationState.authorized,
+      );
+      notifier.update((_) => TunAuthorizationState.unauthorized);
+      expect(
+        container.read(authorizedTunEnableProvider),
+        TunAuthorizationState.unauthorized,
+      );
     });
   });
 
@@ -49,6 +56,42 @@ void main() {
       container.read(packagesProvider.notifier).update((_) => [pkg]);
       expect(container.read(packagesProvider).length, 1);
       expect(container.read(packagesProvider).first.packageName, 'test.app');
+    });
+  });
+
+  group('Providers provider', () {
+    test('setProvider replaces provider with matching name', () {
+      final oldProvider = ExternalProvider(
+        name: 'Proxy',
+        type: 'Proxy',
+        count: 1,
+        vehicleType: 'HTTP',
+        updateAt: DateTime(2026),
+      );
+      final newProvider = oldProvider.copyWith(count: 2);
+      container.read(providersProvider.notifier).update((_) => [oldProvider]);
+
+      container.read(providersProvider.notifier).setProvider(newProvider);
+
+      expect(container.read(providersProvider).single.count, 2);
+    });
+
+    test('setProvider ignores null and missing provider names', () {
+      final provider = ExternalProvider(
+        name: 'Proxy',
+        type: 'Proxy',
+        count: 1,
+        vehicleType: 'HTTP',
+        updateAt: DateTime(2026),
+      );
+      container.read(providersProvider.notifier).update((_) => [provider]);
+
+      container.read(providersProvider.notifier).setProvider(null);
+      container
+          .read(providersProvider.notifier)
+          .setProvider(provider.copyWith(name: 'Other', count: 9));
+
+      expect(container.read(providersProvider).single, provider);
     });
   });
 
@@ -122,15 +165,6 @@ void main() {
     });
   });
 
-  group('viewHeight provider (derived)', () {
-    test('derives from viewSize height', () {
-      container
-          .read(viewSizeProvider.notifier)
-          .update((_) => const Size(800, 600));
-      expect(container.read(viewHeightProvider), 600);
-    });
-  });
-
   group('Init provider', () {
     test('default is false', () {
       expect(container.read(initProvider), false);
@@ -171,17 +205,6 @@ void main() {
     });
   });
 
-  group('BackBlock provider', () {
-    test('default is false', () {
-      expect(container.read(backBlockProvider), false);
-    });
-
-    test('can update', () {
-      container.read(backBlockProvider.notifier).update((_) => true);
-      expect(container.read(backBlockProvider), true);
-    });
-  });
-
   group('Version provider', () {
     test('default is 0', () {
       expect(container.read(versionProvider), 0);
@@ -216,14 +239,276 @@ void main() {
     });
   });
 
-  group('CheckIpNum provider', () {
-    test('default is 0', () {
-      expect(container.read(checkIpNumProvider), 0);
+  group('append-backed buffers notify on every arrival', () {
+    test('Logs.add advances the generation and reaches listeners', () {
+      container.read(logsProvider.notifier).value = FixedList(3);
+      final revisions = <int>[];
+      final subscription = container.listen(
+        logsProvider.select((state) => state.revision),
+        (_, next) => revisions.add(next),
+      );
+      addTearDown(subscription.close);
+
+      final notifier = container.read(logsProvider.notifier);
+      notifier.add(Log.app('a'));
+      notifier.add(Log.app('b'));
+
+      expect(revisions.length, 2, reason: 'one notification per log line');
+      expect(container.read(logsProvider).list.map((log) => log.payload), [
+        'a',
+        'b',
+      ]);
     });
 
-    test('increment works', () {
-      container.read(checkIpNumProvider.notifier).update((_) => 3);
-      expect(container.read(checkIpNumProvider), 3);
+    test('Requests.addRequest reaches listeners', () {
+      container.read(requestsProvider.notifier).value = FixedList(3);
+      var notifications = 0;
+      final subscription = container.listen(
+        requestsProvider.select((state) => state.revision),
+        (_, _) => notifications++,
+      );
+      addTearDown(subscription.close);
+
+      container
+          .read(requestsProvider.notifier)
+          .addRequest(
+            TrackerInfo(
+              id: '1',
+              start: DateTime.utc(2026),
+              metadata: const Metadata(network: 'tcp', host: 'example.com'),
+              chains: const ['Proxy'],
+              rule: 'DOMAIN',
+              rulePayload: 'example.com',
+            ),
+          );
+
+      expect(notifications, 1);
+      expect(container.read(requestsProvider).length, 1);
+    });
+
+    test('Requests.updateTraffic updates the requests it names', () {
+      TrackerInfo request(String id) => TrackerInfo(
+        id: id,
+        upload: 460,
+        start: DateTime.utc(2026),
+        metadata: const Metadata(network: 'tcp', host: 'example.com'),
+        chains: const ['Proxy'],
+        rule: 'DOMAIN',
+        rulePayload: 'example.com',
+      );
+      final notifier = container.read(requestsProvider.notifier);
+      notifier.value = FixedList(3);
+      notifier.addRequest(request('a'));
+      notifier.addRequest(request('b'));
+      var notifications = 0;
+      final subscription = container.listen(
+        requestsProvider.select((state) => state.revision),
+        (_, _) => notifications++,
+      );
+      addTearDown(subscription.close);
+
+      notifier.updateTraffic({'gone': (upload: 1, download: 1)});
+      expect(notifications, 0);
+
+      notifier.updateTraffic({
+        'a': (upload: 520, download: 257835),
+        'gone': (upload: 1, download: 1),
+      });
+
+      expect(notifications, 1);
+      expect(
+        container
+            .read(requestsProvider)
+            .list
+            .map((request) => (request.id, request.upload, request.download)),
+        [('a', 520, 257835), ('b', 460, 0)],
+      );
+    });
+
+    test('Traffics.addTraffic reaches listeners and clear resets', () {
+      container.read(trafficsProvider.notifier).value = FixedList(3);
+      var notifications = 0;
+      final subscription = container.listen(
+        trafficsProvider,
+        (_, _) => notifications++,
+      );
+      addTearDown(subscription.close);
+
+      final notifier = container.read(trafficsProvider.notifier);
+      notifier.addTraffic(const Traffic(up: 1, down: 2));
+      notifier.addTraffic(const Traffic(up: 3, down: 4));
+      expect(notifications, 2);
+
+      notifier.clear();
+      expect(notifications, 3);
+      expect(container.read(trafficsProvider).length, 0);
+    });
+  });
+
+  group('SortNum provider', () {
+    test('increment returns previous value and updates state', () {
+      final value = container.read(sortNumProvider.notifier).add();
+
+      expect(value, 0);
+      expect(container.read(sortNumProvider), 1);
+    });
+  });
+
+  group('DelayDataSource provider', () {
+    test('sets delay by url and proxy name', () {
+      container
+          .read(delayDataSourceProvider.notifier)
+          .setDelay(
+            const Delay(name: 'Proxy', url: 'https://test.example', value: 120),
+          );
+
+      expect(container.read(delayDataSourceProvider), {
+        'https://test.example': {'Proxy': 120},
+      });
+    });
+
+    test('keeps same state instance when delay value is unchanged', () {
+      final notifier = container.read(delayDataSourceProvider.notifier);
+      const delay = Delay(name: 'Proxy', url: 'https://test.example', value: 1);
+      notifier.setDelay(delay);
+      final state = container.read(delayDataSourceProvider);
+
+      notifier.setDelay(delay);
+
+      expect(identical(container.read(delayDataSourceProvider), state), isTrue);
+    });
+
+    test('a reset of the state is not undone by the next delay', () {
+      const url = 'https://test.example';
+      final notifier = container.read(delayDataSourceProvider.notifier);
+      notifier.setDelay(const Delay(name: 'A', url: url, value: 10));
+
+      notifier.value = {};
+      notifier.setDelay(const Delay(name: 'B', url: url, value: 20));
+
+      expect(container.read(delayDataSourceProvider), {
+        url: {'B': 20},
+      });
+    });
+
+    test('applies a batch of delays as one state change', () {
+      const url = 'https://test.example';
+      final changes = <DelayMap>[];
+      container.listen(delayDataSourceProvider, (_, next) => changes.add(next));
+
+      container.read(delayDataSourceProvider.notifier).setDelays([
+        const Delay(name: 'A', url: url, value: 10),
+        const Delay(name: 'B', url: url, value: -1),
+        const Delay(name: 'A', url: url, value: 20),
+        const Delay(name: 'A', url: 'https://other.example', value: 30),
+      ]);
+
+      expect(changes, [
+        {
+          url: {'A': 20, 'B': -1},
+          'https://other.example': {'A': 30},
+        },
+      ]);
+    });
+  });
+
+  group('Loading provider', () {
+    test('stop without start sets loading false immediately', () async {
+      final notifier = container.read(
+        loadingProvider(LoadingTag.profiles).notifier,
+      );
+
+      await notifier.stop();
+
+      expect(container.read(loadingProvider(LoadingTag.profiles)), false);
+    });
+
+    test('stop keeps loading visible for minimum duration', () async {
+      final notifier = container.read(
+        loadingProvider(LoadingTag.profiles).notifier,
+      );
+
+      notifier.start();
+      await notifier.stop();
+
+      expect(container.read(loadingProvider(LoadingTag.profiles)), true);
+
+      await Future.delayed(const Duration(milliseconds: 1100));
+
+      expect(container.read(loadingProvider(LoadingTag.profiles)), false);
+    });
+
+    test(
+      'disposing while the minimum-duration timer is pending is safe',
+      () async {
+        final scoped = ProviderContainer();
+        final notifier = scoped.read(
+          loadingProvider(LoadingTag.profiles).notifier,
+        );
+
+        notifier.start();
+        await notifier.stop();
+        scoped.dispose();
+
+        await Future.delayed(const Duration(milliseconds: 1100));
+      },
+    );
+  });
+
+  group('UpdatingKeys provider', () {
+    test('survives a subscriber that stops watching', () {
+      const key = 'provider_geo';
+      final subscription = container.listen<bool>(
+        isUpdatingProvider(key),
+        (_, _) {},
+      );
+      container.read(updatingKeysProvider.notifier).start(key);
+      subscription.close();
+
+      expect(container.read(isUpdatingProvider(key)), isTrue);
+    });
+
+    test('overlapping operations finish independently', () {
+      const key = 'provider_rules';
+      final notifier = container.read(updatingKeysProvider.notifier);
+
+      final first = notifier.start(key);
+      final second = notifier.start(key);
+
+      notifier.stop(key, first);
+
+      expect(container.read(isUpdatingProvider(key)), isTrue);
+
+      notifier.stop(key, second);
+
+      expect(container.read(isUpdatingProvider(key)), isFalse);
+    });
+
+    test('a stale operation cannot stop a later one', () {
+      const key = 'profile_1';
+      final notifier = container.read(updatingKeysProvider.notifier);
+
+      final stale = notifier.start(key);
+      notifier.stopKeys([key]);
+      notifier.start(key);
+      notifier.stop(key, stale);
+
+      expect(container.read(isUpdatingProvider(key)), isTrue);
+    });
+
+    test('a core disconnect only discards the core scope', () {
+      final notifier = container.read(updatingKeysProvider.notifier);
+      container.read(coreStatusProvider.notifier).value = CoreStatus.connected;
+      notifier.start('geo_resource_MMDB', scope: UpdatingScope.core);
+      notifier.start('provider_geo', scope: UpdatingScope.core);
+      notifier.start('profile_1');
+
+      container.read(coreStatusProvider.notifier).value =
+          CoreStatus.disconnected;
+
+      expect(container.read(isUpdatingProvider('geo_resource_MMDB')), isFalse);
+      expect(container.read(isUpdatingProvider('provider_geo')), isFalse);
+      expect(container.read(isUpdatingProvider('profile_1')), isTrue);
     });
   });
 
@@ -232,93 +517,4 @@ void main() {
       expect(container.read(coreStatusProvider), CoreStatus.disconnected);
     });
   });
-
-  group('NetworkDetection provider', () {
-    late HttpClientAdapter originalAdapter;
-
-    setUp(() {
-      originalAdapter = request.dio.httpClientAdapter;
-    });
-
-    tearDown(() {
-      request.dio.httpClientAdapter = originalAdapter;
-    });
-
-    test(
-      'ignores a canceled stale check after a newer check succeeds',
-      () async {
-        request.dio.httpClientAdapter = _DelayedCancelIpAdapter();
-        final container = ProviderContainer(
-          overrides: [
-            initProvider.overrideWithBuild((_, _) => true),
-            runTimeProvider.overrideWithBuild((_, _) => 1),
-          ],
-        );
-        addTearDown(container.dispose);
-
-        final notifier = container.read(networkDetectionProvider.notifier);
-        notifier.startCheck();
-        await Future.delayed(commonDuration + const Duration(milliseconds: 50));
-
-        notifier.startCheck();
-        await Future.delayed(
-          commonDuration + const Duration(milliseconds: 120),
-        );
-
-        expect(container.read(networkDetectionProvider).ipInfo?.ip, '2.2.2.2');
-        expect(container.read(networkDetectionProvider).isLoading, false);
-
-        await Future.delayed(const Duration(milliseconds: 620));
-
-        expect(container.read(networkDetectionProvider).ipInfo?.ip, '2.2.2.2');
-        expect(container.read(networkDetectionProvider).isLoading, false);
-      },
-    );
-  });
-}
-
-class _DelayedCancelIpAdapter implements HttpClientAdapter {
-  static const _sourceCount = 7;
-
-  int _requestCount = 0;
-
-  @override
-  Future<ResponseBody> fetch(
-    RequestOptions options,
-    Stream<Uint8List>? requestStream,
-    Future<void>? cancelFuture,
-  ) {
-    _requestCount++;
-    final batch = ((_requestCount - 1) ~/ _sourceCount) + 1;
-    if (batch == 1) {
-      final completer = Completer<ResponseBody>();
-      cancelFuture?.then((_) {
-        Timer(const Duration(milliseconds: 500), () {
-          if (completer.isCompleted) return;
-          completer.completeError(
-            DioException(
-              requestOptions: options,
-              type: DioExceptionType.cancel,
-              error: 'cancelled',
-            ),
-          );
-        });
-      });
-      return completer.future;
-    }
-
-    return Future.delayed(
-      const Duration(milliseconds: 10),
-      () => ResponseBody.fromString(
-        '{"ip":"2.2.2.2","country_code":"US"}',
-        200,
-        headers: {
-          Headers.contentTypeHeader: ['application/json'],
-        },
-      ),
-    );
-  }
-
-  @override
-  void close({bool force = false}) {}
 }

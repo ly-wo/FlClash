@@ -1,10 +1,10 @@
 {
   "schema": 1,
-  "shanlian_rs_commit": "45234a03815dcd99fd1c7546753dd350838da078",
-  "flclash_commit": "ac2f6b919ec1ad395b61b4bb1e714a39c750babe",
-  "mihomo_commit": "7bdcd60da9db10b681d7507af96d4fad797f3774",
+  "shanlian_rs_commit": "4d60163381bf8e302eb4a32e0b5208bf0eb60621",
+  "flclash_commit": "526a4c8fbc7c854c5f14b5b6a6e4225def4b16fc",
+  "mihomo_commit": "8380d0e7462f061a964323e9bf3129a236fcc5d5",
   "patch": "flclash-anytls-auth.patch",
-  "patch_sha256": "f0e49343d29bf1b23a557805fbd5b18d0060523b7d5d21c64fbc89744ccedfcb",
+  "patch_sha256": "28df33e38ff1b614ca905bbaffbac5d30f9ada06a099c3232ddc01b8d5a19bbc",
   "applied_marker_file": "transport/anytls/client.go",
   "applied_marker": "func (c *Client) authentication",
   "version_suffix": "shanlian"

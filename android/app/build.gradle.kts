@@ -3,33 +3,29 @@ import java.util.Properties
 
 plugins {
     id("com.android.application")
-    id("kotlin-android")
     id("dev.flutter.flutter-gradle-plugin")
-    id("com.google.gms.google-services") apply false
-    id("com.google.firebase.crashlytics") apply false
 }
 
-val localPropertiesFile = rootProject.file("local.properties")
 val localProperties = Properties().apply {
+    val localPropertiesFile = rootProject.file("local.properties")
     if (localPropertiesFile.exists()) {
         localPropertiesFile.inputStream().use { load(it) }
     }
 }
 
-val mStoreFile: File = file("keystore.jks")
-val mStorePassword: String? = localProperties.getProperty("storePassword")
-val mKeyAlias: String? = localProperties.getProperty("keyAlias")
-val mKeyPassword: String? = localProperties.getProperty("keyPassword")
-val isRelease =
-    mStoreFile.exists() && mStorePassword != null && mKeyAlias != null && mKeyPassword != null
-
+val releaseStoreFile = file("keystore.jks")
+val releaseStorePassword = localProperties.getProperty("storePassword")
+val releaseKeyAlias = localProperties.getProperty("keyAlias")
+val releaseKeyPassword = localProperties.getProperty("keyPassword")
+val hasReleaseSigning = releaseStoreFile.exists() &&
+    releaseStorePassword != null &&
+    releaseKeyAlias != null &&
+    releaseKeyPassword != null
 
 android {
     namespace = "com.follow.clash"
     compileSdk = libs.versions.compileSdk.get().toInt()
     ndkVersion = libs.versions.ndkVersion.get()
-
-
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -45,12 +41,12 @@ android {
     }
 
     signingConfigs {
-        if (isRelease) {
+        if (hasReleaseSigning) {
             create("release") {
-                storeFile = mStoreFile
-                storePassword = mStorePassword
-                keyAlias = mKeyAlias
-                keyPassword = mKeyPassword
+                storeFile = releaseStoreFile
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
             }
         }
     }
@@ -70,7 +66,7 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            if (isRelease) {
+            if (hasReleaseSigning) {
                 signingConfig = signingConfigs.getByName("release")
             } else {
                 signingConfig = signingConfigs.getByName("debug")
@@ -78,9 +74,15 @@ android {
             }
 
             proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
             )
         }
+    }
+
+    sourceSets {
+        // Unit tests live under android/tests/ instead of each module's src/test.
+        getByName("test").java.setSrcDirs(listOf("../tests/app"))
     }
 }
 
@@ -94,32 +96,15 @@ flutter {
     source = "../.."
 }
 
-
 dependencies {
     implementation(project(":service"))
     implementation(project(":common"))
+    implementation(project(":core"))
     implementation(libs.core.splashscreen)
     implementation(libs.gson)
     implementation(libs.smali.dexlib2) {
         exclude(group = "com.google.guava", module = "guava")
     }
-    implementation(platform(libs.firebase.bom))
-    implementation(libs.firebase.crashlytics.ndk)
-    implementation(libs.firebase.analytics)
-}
-
-val googleServicesFile = file("google-services.json")
-if (googleServicesFile.exists()) {
-    apply(plugin = "com.google.gms.google-services")
-    apply(plugin = "com.google.firebase.crashlytics")
-    val uploadCrashlytics = localProperties.getProperty("crashlyticsUpload") == "true" ||
-        System.getenv("FIREBASE_CRASHLYTICS_UPLOAD") == "true"
-    extensions.getByType(com.android.build.gradle.AppExtension::class.java).buildTypes.configureEach {
-        val crashlytics = (this as ExtensionAware).extensions.getByName("firebaseCrashlytics")
-        listOf("setMappingFileUploadEnabled", "setNativeSymbolUploadEnabled").forEach { setterName ->
-            crashlytics.javaClass
-                .getMethod(setterName, Boolean::class.javaObjectType)
-                .invoke(crashlytics, uploadCrashlytics)
-        }
-    }
+    testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
 }

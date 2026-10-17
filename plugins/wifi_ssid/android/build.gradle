@@ -1,4 +1,4 @@
-group 'com.example.wifi_ssid'
+group 'com.follow.clash.wifi_ssid'
 version '1.0'
 
 buildscript {
@@ -8,8 +8,7 @@ buildscript {
     }
 
     dependencies {
-        classpath 'com.android.tools.build:gradle:8.12.2'
-        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:2.2.10'
+        classpath 'com.android.tools.build:gradle:9.4.1'
     }
 }
 
@@ -21,26 +20,27 @@ allprojects {
 }
 
 apply plugin: 'com.android.library'
-apply plugin: 'kotlin-android'
 
 android {
-    namespace 'com.example.wifi_ssid'
-    compileSdk 36
+    namespace 'com.follow.clash.wifi_ssid'
+    compileSdk 37
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = '17'
-    }
-
     defaultConfig {
-        minSdk 21
+        minSdk 24
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
     }
 }
 
 dependencies {
-    implementation 'androidx.core:core-ktx:1.15.0'
+    implementation 'androidx.core:core-ktx:1.19.1'
 }

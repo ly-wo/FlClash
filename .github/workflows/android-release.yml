@@ -15,8 +15,8 @@ permissions:
   contents: read
 
 env:
-  FLUTTER_VERSION: 3.41.9
-  GO_VERSION: 1.22.10
+  FLUTTER_VERSION: '3.47.6'
+  GO_VERSION: '1.27.1'
   NDK_VERSION: r28c
 
 jobs:
@@ -34,7 +34,7 @@ jobs:
       - name: Check pinned submodules
         run: |
           test -f core/Clash.Meta/go.mod
-          test -f plugins/tray_manager/packages/tray_manager/pubspec.yaml
+          test -f core/shanlian/manifest.json
           git submodule status --recursive
 
       - name: Setup Flutter
@@ -53,8 +53,8 @@ jobs:
       - name: Run tests
         run: flutter test --reporter expanded
 
-      - name: Analyze and test the Android core build tool
-        working-directory: plugins/setup/buildkit/build_tool
+      - name: Analyze and test the core setup hooks
+        working-directory: plugins/setup/setup_hooks
         run: |
           dart pub get
           dart analyze --fatal-infos
@@ -78,7 +78,7 @@ jobs:
       - name: Check pinned submodules
         run: |
           test -f core/Clash.Meta/go.mod
-          test -f plugins/tray_manager/packages/tray_manager/pubspec.yaml
+          test -f core/shanlian/manifest.json
           git submodule status --recursive
 
       - name: Setup Go
@@ -131,25 +131,17 @@ jobs:
           version="${GITHUB_REF_NAME#v}"
           stage="$(mktemp -d)"
           root="${stage}/flclash-android-core"
-          for abi in armeabi-v7a arm64-v8a x86_64; do
-            so="libclash/android/${abi}/libclash.so"
-            header_dir="android/core/src/main/cpp/includes/${abi}"
-            test -f "${so}"
-            test -f "${header_dir}/libclash.h"
-            test -f "${header_dir}/bride.h"
-            mkdir -p "${root}/jniLibs/${abi}" "${root}/includes/${abi}"
-            cp "${so}" "${root}/jniLibs/${abi}/libclash.so"
-            cp "${header_dir}/libclash.h" "${header_dir}/bride.h" "${root}/includes/${abi}/"
-          done
           mkdir -p dist
+          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk "dist/FlClash-${version}-android-armeabi-v7a.apk"
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk "dist/FlClash-${version}-android-arm64-v8a.apk"
+          cp build/app/outputs/flutter-apk/app-x86_64-release.apk "dist/FlClash-${version}-android-x86_64.apk"
+          STAGE="$stage" python3 -c 'import os,pathlib,zipfile; dist=pathlib.Path("dist"); root=pathlib.Path(os.environ["STAGE"])/"flclash-android-core"; expected={"android-armeabi-v7a.apk":("armeabi-v7a","lib/armeabi-v7a/libclash.so"),"android-arm64-v8a.apk":("arm64-v8a","lib/arm64-v8a/libclash.so"),"android-x86_64.apk":("x86_64","lib/x86_64/libclash.so")}; found=set();
+[(dest.mkdir(parents=True, exist_ok=True), (dest/"libclash.so").write_bytes(zipfile.ZipFile(apk).read(library)), found.add(abi)) for apk in dist.glob("*.apk") for key,(abi,library) in expected.items() if apk.name.endswith(key) for dest in [root/"jniLibs"/abi]];
+assert found=={"armeabi-v7a","arm64-v8a","x86_64"}, found; data=(root/"jniLibs"/"arm64-v8a"/"libclash.so").read_bytes(); assert b"shanlian" in data, "arm64 libclash.so is missing the shanlian version marker"'
           (
             cd "${stage}"
             zip -r "${GITHUB_WORKSPACE}/dist/flclash-android-core-${version}.zip" flclash-android-core
           )
-          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk "dist/FlClash-${version}-android-armeabi-v7a.apk"
-          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk "dist/FlClash-${version}-android-arm64-v8a.apk"
-          cp build/app/outputs/flutter-apk/app-x86_64-release.apk "dist/FlClash-${version}-android-x86_64.apk"
-          python3 -c 'import pathlib,zipfile; dist=pathlib.Path("dist"); expected={"android-armeabi-v7a.apk":"lib/armeabi-v7a/libclash.so","android-arm64-v8a.apk":"lib/arm64-v8a/libclash.so","android-x86_64.apk":"lib/x86_64/libclash.so"}; found={};[(found.__setitem__(key,[name for name in zipfile.ZipFile(apk).namelist() if name==library])) for apk in dist.glob("*.apk") for key,library in expected.items() if apk.name.endswith(key)]; missing=[key for key,names in found.items() if len(names)!=1]; assert not missing and len(found)==3, found'
           (
             cd dist
             sha256sum -- *.apk *.zip > SHA256SUMS
@@ -174,4 +166,4 @@ jobs:
 
             没有配置正式签名密钥。APK 使用 Android debug 签名，应用 ID 带 `.dev` 后缀，包名是 `com.follow.clash.dev`。这不是稳定的发布签名。
 
-            本流程不向 Telegram、F-Droid 或 Firebase 上传产物。`google-services.json` 存在时应用内仍可初始化 Crashlytics；映射和符号默认不上传。
+            本流程不向 Telegram 或 F-Droid 上传产物。Android 核心是打过闪连 AnyTLS 认证补丁的 Mihomo，库名是 libclash.so。
