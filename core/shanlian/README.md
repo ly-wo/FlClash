@@ -61,4 +61,4 @@ dart run bin/build_tool.dart android --root-dir D:/Projects/dm/ns/FlClash --arch
 
 没有 `android/app/keystore.jks` 以及 `local.properties` 里的 `storePassword`、`keyAlias`、`keyPassword` 时，`android/app/build.gradle.kts` 继续用 Android debug 签名，并把应用 ID 加上 `.dev`，安装包名是 `com.follow.clash.dev`。这不是稳定的发布签名，CI 不会生成或提交密钥。
 
-Dart 工程没有 `firebase_core`，也没有 `Firebase.initializeApp`。Android 只在 `google-services.json` 存在时应用 Google Services 和 Crashlytics 插件；文件缺失时插件不应用，`GlobalState.setCrashlytics` 发现没有 `google_app_id` 就跳过初始化。映射和原生符号默认不上传。只有设置 `FIREBASE_CRASHLYTICS_UPLOAD=true` 或 `local.properties` 的 `crashlyticsUpload=true` 时才恢复上传。
+Dart 工程没有 `firebase_core`，也没有 `Firebase.initializeApp`。Android 只在 `google-services.json` 存在时应用 Google Services 和 Crashlytics 插件；文件缺失时插件不应用，`GlobalState.setCrashlytics` 发现没有 `google_app_id` 就跳过初始化。Crashlytics 的映射和原生符号开关在每个 `buildType` 上，默认不上传。只有设置 `FIREBASE_CRASHLYTICS_UPLOAD=true` 或 `local.properties` 的 `crashlyticsUpload=true` 时才恢复上传。

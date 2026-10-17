@@ -114,11 +114,12 @@ if (googleServicesFile.exists()) {
     apply(plugin = "com.google.firebase.crashlytics")
     val uploadCrashlytics = localProperties.getProperty("crashlyticsUpload") == "true" ||
         System.getenv("FIREBASE_CRASHLYTICS_UPLOAD") == "true"
-    val crashlytics = extensions.getByName("firebaseCrashlytics")
-    listOf("setMappingFileUploadEnabled", "setNativeSymbolUploadEnabled").forEach { setterName ->
-        val setter = crashlytics.javaClass.methods.firstOrNull { method ->
-            method.name == setterName && method.parameterCount == 1
+    extensions.getByType(com.android.build.gradle.AppExtension::class.java).buildTypes.configureEach {
+        val crashlytics = (this as ExtensionAware).extensions.getByName("firebaseCrashlytics")
+        listOf("setMappingFileUploadEnabled", "setNativeSymbolUploadEnabled").forEach { setterName ->
+            crashlytics.javaClass
+                .getMethod(setterName, Boolean::class.javaObjectType)
+                .invoke(crashlytics, uploadCrashlytics)
         }
-        setter?.invoke(crashlytics, uploadCrashlytics)
     }
 }

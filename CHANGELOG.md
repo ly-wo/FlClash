@@ -1,3 +1,9 @@
+## v0.8.95
+
+- Fix the Android release configuration when google-services.json is present
+
+- Keep Crashlytics mapping and native symbol upload off unless explicitly enabled
+
 ## v0.8.94
 
 - Build the Android core with the shanlian AnyTLS auth patch
