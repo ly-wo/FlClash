@@ -3,10 +3,6 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:setup_hooks/src/shanlian_prepare.dart';
 
-/// Prepares the patched Mihomo module used by the Android gomobile bind.
-///
-/// Prints `MODULE_DIR` and `VERSION` for Gradle. A failure exits non-zero
-/// and does not leave the stock core as a fallback.
 Future<void> main(List<String> args) async {
   final rootFlag = args.indexOf('--root-dir');
   if (rootFlag == -1 || rootFlag + 1 >= args.length) {

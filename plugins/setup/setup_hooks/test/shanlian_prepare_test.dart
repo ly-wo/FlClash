@@ -48,6 +48,8 @@ void main() {
         contains('=> ../mihomo'),
       );
       expect(first.shanlianVersion, '9.9.9-shanlian');
+      expect(File(p.join(first.mihomoDir, 'constant', 'version.go')).readAsStringSync(),
+          contains('1.10.0'));
       expect(first.ldflags('-w -s'),
           contains('constant.Version=9.9.9-shanlian'));
       expect(_status(p.join(root.path, 'core', 'Clash.Meta')), sourceStatus);
@@ -108,6 +110,25 @@ void main() {
 
       expect(copies, 1);
       expect(results[0].moduleDir, results[1].moduleDir);
+    });
+
+    test('appends the suffix to the configured core version', () async {
+      _initFixture(root);
+      File(p.join(root.path, 'build_config.yaml')).writeAsStringSync(
+        'core_version: v1.19.32\n',
+      );
+
+      final prepared = await ShanlianCorePrepare(projectRoot: root.path).prepare();
+
+      expect(prepared.shanlianVersion, 'v1.19.32-shanlian');
+      expect(prepared.ldflags('-w -s'),
+          contains('constant.Version=v1.19.32-shanlian'));
+
+      File(p.join(root.path, 'build_config.yaml')).writeAsStringSync(
+        'core_version: v1.19.32-shanlian\n',
+      );
+      final preserved = await ShanlianCorePrepare(projectRoot: root.path).prepare();
+      expect(preserved.shanlianVersion, 'v1.19.32-shanlian');
     });
 
     test('rejects a patch digest mismatch without changing the source', () async {
@@ -194,7 +215,10 @@ String _initFixture(Directory root, {bool reset = false}) {
   Directory(p.join(meta.path, 'constant')).createSync(recursive: true);
   File(p.join(meta.path, 'hello.txt')).writeAsStringSync('original\n');
   File(p.join(meta.path, 'constant', 'version.go')).writeAsStringSync(
-    'package constant\n\nvar (\n\tVersion = "9.9.9"\n)\n',
+    'package constant\n\nvar (\n\tVersion = "1.10.0"\n)\n',
+  );
+  File(p.join(root.path, 'build_config.yaml')).writeAsStringSync(
+    'core_version: 9.9.9\n',
   );
   File(p.join(meta.path, 'go.mod')).writeAsStringSync('module example.com/fixture\n\ngo 1.21\n');
   _git(meta.path, ['init']);

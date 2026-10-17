@@ -16,7 +16,7 @@ void main() {
     final prepared = await ShanlianCorePrepare(projectRoot: root).prepare();
 
     expect(prepared.mihomoCommit, '8380d0e7462f061a964323e9bf3129a236fcc5d5');
-    expect(prepared.shanlianVersion, '1.10.0-shanlian');
+    expect(prepared.shanlianVersion, 'v1.19.32-shanlian');
     expect(
       File(p.join(prepared.mihomoDir, 'transport', 'anytls', 'client.go'))
           .readAsStringSync(),

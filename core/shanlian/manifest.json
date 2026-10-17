@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "shanlian_rs_commit": "4d60163381bf8e302eb4a32e0b5208bf0eb60621",
-  "flclash_commit": "526a4c8fbc7c854c5f14b5b6a6e4225def4b16fc",
+  "flclash_commit": "8d4f9744948751f1273fe871e1d05276fac09b0e",
   "mihomo_commit": "8380d0e7462f061a964323e9bf3129a236fcc5d5",
   "patch": "flclash-anytls-auth.patch",
   "patch_sha256": "28df33e38ff1b614ca905bbaffbac5d30f9ada06a099c3232ddc01b8d5a19bbc",

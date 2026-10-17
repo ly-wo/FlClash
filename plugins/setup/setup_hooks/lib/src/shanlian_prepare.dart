@@ -5,6 +5,7 @@ import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 
 import 'error.dart';
+import 'options.dart';
 
 const _refuseStockCore =
     'Android build stops instead of using the unmodified core.';
@@ -242,7 +243,7 @@ class ShanlianCorePrepare {
     return PreparedShanlianCore(
       moduleDir: moduleDir,
       mihomoDir: mihomoDir,
-      shanlianVersion: _shanlianVersion(mihomoDir, manifest.versionSuffix),
+      shanlianVersion: _shanlianVersion(manifest.versionSuffix),
       mihomoCommit: manifest.mihomoCommit,
       patchSha256: manifest.patchSha256,
     );
@@ -365,23 +366,16 @@ class ShanlianCorePrepare {
     }
   }
 
-  String _shanlianVersion(String mihomoDir, String suffix) {
-    final file = File(p.join(mihomoDir, 'constant', 'version.go'));
-    if (!file.existsSync()) {
+  String _shanlianVersion(String suffix) {
+    final configured = BuildConfig.load(rootDir: projectRoot).coreVersion.trim();
+    if (configured.isEmpty) {
       throw BuildException(
-        'Mihomo version file is missing: ${file.path}. $_refuseStockCore',
+        'build_config.yaml core_version is missing. $_refuseStockCore',
       );
     }
-    final match = RegExp(r'Version\s*=\s*"([^"]+)"')
-        .firstMatch(file.readAsStringSync());
-    if (match == null) {
-      throw BuildException(
-        'Mihomo version string was not found. $_refuseStockCore',
-      );
-    }
-    final version = match.group(1)!;
-    if (version.contains(suffix)) return version;
-    return '$version-$suffix';
+    final marker = '-$suffix';
+    if (configured.endsWith(marker)) return configured;
+    return '$configured$marker';
   }
 
   String _git(

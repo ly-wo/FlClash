@@ -1,12 +1,14 @@
 name: build
 
-# This fork does not start the upstream tag workflow.
-# Tag pushes would send artifacts to Telegram and F-Droid and require signing secrets.
-# Desktop jobs remain below for the upstream repository. Android tags use android-release.yml.
+# Tag pushes stay enabled for chen08209/FlClash. Every job is limited to that
+# repository, so this fork does not run the desktop, check, or release jobs.
+# Android tags for this fork use android-release.yml.
 on:
   push:
     branches:
       - '**'
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 concurrency:
@@ -26,7 +28,7 @@ jobs:
     name: Dart
     # A private copy pays for its Actions minutes, so it runs the checks only when
     # started by hand.
-    if: &checks github.event_name == 'workflow_dispatch' || !github.event.repository.private
+    if: &checks github.repository == 'chen08209/FlClash' && (github.event_name == 'workflow_dispatch' || !github.event.repository.private)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -102,7 +104,7 @@ jobs:
 
   desktop:
     name: Desktop ${{ matrix.platform }}
-    if: (github.event_name == 'workflow_dispatch' || !github.event.repository.private) && !(github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
+    if: github.repository == 'chen08209/FlClash' && (github.event_name == 'workflow_dispatch' || !github.event.repository.private) && !(github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -452,6 +454,7 @@ jobs:
           overwrite: true
 
   upload:
+    if: github.repository == 'chen08209/FlClash'
     permissions:
       contents: write
     needs: [ build, dart, plugins, go, android, rust, windows-helper-test ]

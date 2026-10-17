@@ -10,11 +10,6 @@ plugins {
     id("com.android.library")
 }
 
-// Same selection order as plugins/setup/buildkit/gradle/plugin.gradle:
-// ANDROID_ARCH wins, otherwise Flutter -Ptarget-platform, otherwise every
-// supported ABI. x86 is not a shipped core ABI.
-val coreAbiFilters = resolveCoreAbiFilters()
-
 android {
     namespace = "com.follow.clash.core"
     compileSdk = libs.versions.compileSdk.get().toInt()
@@ -309,13 +304,22 @@ abstract class UnpackJniLibs : DefaultTask() {
     }
 }
 
+val setupHooks = rootProject.layout.projectDirectory.dir("../plugins/setup/setup_hooks")
+
 val bindCore =
     tasks.register<GomobileBind>("bindCore") {
         sources.from(
             fileTree(goModule) {
-                exclude("**/*_test.go", "**/testdata/**", "cmd/**", "Clash.Meta/.github/**")
+                exclude("**/*_test.go", "**/testdata/**", "Clash.Meta/.github/**")
             },
         )
+        sources.from(
+            setupHooks.file("bin/prepare_shanlian.dart"),
+            setupHooks.file("lib/src/shanlian_prepare.dart"),
+            setupHooks.file("pubspec.yaml"),
+            setupHooks.file("pubspec.lock"),
+        )
+        sources.from(fileTree(setupHooks.dir("lib/src")))
         moduleDirectory.set(goModule)
         goExecutable.set(goExecutablePath)
         goVersion.set(
@@ -356,39 +360,4 @@ androidComponents {
 
 dependencies {
     implementation(files(bindCore.flatMap { it.classesJar }))
-}
-
-fun resolveCoreAbiFilters(): List<String> {
-    val archToAbi = mapOf(
-        "arm" to "armeabi-v7a",
-        "arm64" to "arm64-v8a",
-        "amd64" to "x86_64",
-    )
-    val platformToAbi = mapOf(
-        "android-arm" to "armeabi-v7a",
-        "android-arm64" to "arm64-v8a",
-        "android-x64" to "x86_64",
-    )
-    val allAbis = listOf("armeabi-v7a", "arm64-v8a", "x86_64")
-
-    val androidArch = System.getenv("ANDROID_ARCH")?.trim().orEmpty()
-    if (androidArch.isNotEmpty()) {
-        return listOf(archToAbi[androidArch] ?: error("Invalid arch: $androidArch"))
-    }
-
-    val targetPlatform = (
-        findProperty("target-platform") ?: rootProject.findProperty("target-platform")
-        )?.toString()?.trim().orEmpty()
-    if (targetPlatform.isEmpty()) {
-        return allAbis
-    }
-
-    val abis = linkedSetOf<String>()
-    for (raw in targetPlatform.split(',')) {
-        val name = raw.trim()
-        if (name.isEmpty()) continue
-        abis += platformToAbi[name] ?: error("Invalid target-platform: $name")
-    }
-    if (abis.isEmpty()) error("No Android target platforms provided")
-    return abis.toList()
 }

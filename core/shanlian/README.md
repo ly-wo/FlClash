@@ -47,15 +47,15 @@ python flclash_android.py build --flclash-dir D:/Projects/dm/ns/FlClash --arch a
 dart run bin/prepare_shanlian.dart --root-dir D:/Projects/dm/ns/FlClash
 ```
 
-工作目录是 `FlClash/plugins/setup/setup_hooks`。Android 库由 gomobile 生成，文件名是 `libclash.so`，版本字符串带 `shanlian`。准备失败时 Gradle 停止，不会绑定未打补丁的核心。桌面平台的构建命令不读取这个补丁。
+工作目录是 `FlClash/plugins/setup/setup_hooks`。Android 库由 gomobile 生成，文件名是 `libclash.so`。运行时版本取 `build_config.yaml` 的 `core_version`，再追加 `-shanlian`；当前配置是 `v1.19.32-shanlian`。它不读取 `constant/version.go` 里的 `1.10.0`。配置值已经以该后缀结尾时保持原样。准备失败时 Gradle 停止，不会绑定未打补丁的核心。桌面平台的构建命令不读取这个补丁。配套的 `shanlian-rs` 发布版本是 `0.1.4`。
 
 这里没有真机和闪连账号，不能把编译成功当成 VPN 或真实节点已经连通。
 
 ## Android 标签发布
 
-`v*` 标签由 FlClash 的 `.github/workflows/android-release.yml` 构建，不走原来的 `build.yaml`。旧 workflow 里的桌面任务还留在文件中，但该 fork 不再用标签触发它，因此不会向 Telegram 或 F-Droid 发送，也不会读取签名密钥。
+本 fork 的 Android 产物由 `.github/workflows/android-release.yml` 构建。上游 `build.yaml` 恢复了 `v*` 标签触发，但每个 job 都要求 `github.repository == 'chen08209/FlClash'`，`pages.yaml` 同样限制仓库。这个 fork 的推送和标签不会跑上游桌面、检查或发布 job，因此不会向 Telegram 或 F-Droid 发送，也不会读取签名密钥。计划中的发布标签是 `v0.9.1-shanlian.1`，不要移动已有的上游 `v0.9.1`。
 
-标签构建使用 Flutter 3.47.6、Go 1.27.1 和 NDK r28c。`.gitmodules` 使用公开的 `https://github.com/` 地址，CI 按固定 gitlink 递归检出。产物是三个 ABI 各自可安装的 release APK、从 APK 抽出的 `libclash.so` zip，以及 `SHA256SUMS`。稳定标签会设置 `APP_ENV=stable`。
+标签构建使用 Flutter 3.47.6、Rust stable、Go 1.27.1、Java 17 和 NDK r28c。`.gitmodules` 使用公开的 `https://github.com/` 地址，CI 按固定 gitlink 递归检出。分支和手动运行用 `pubspec.yaml` 的版本名（当前 `0.9.1`）给文件命名；标签运行用去掉 `v` 的完整标签名。产物名使用 `github.run_id`。产物是三个 ABI 各自可安装的 release APK，以及包含三个 `libclash.so`、`android/core/build/gomobile/core.aar` 和打过补丁的 `classes.jar` 的 zip，再加上 `SHA256SUMS`。稳定标签会设置 `APP_ENV=stable`。
 
 没有 `android/app/keystore.jks` 以及 `local.properties` 里的 `storePassword`、`keyAlias`、`keyPassword` 时，`android/app/build.gradle.kts` 继续用 Android debug 签名，并把应用 ID 加上 `.dev`，安装包名是 `com.follow.clash.dev`。这不是稳定的发布签名，CI 不会生成或提交密钥。
 

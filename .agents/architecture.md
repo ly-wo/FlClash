@@ -1481,7 +1481,8 @@ Build configuration defaults live in `plugins/setup/setup_hooks/lib/src/options.
 `core_version` in `build_config.yaml` is the mihomo release tag the `core/Clash.Meta` fork is based on. Upstream injects
 its version only from its own CI, so the fork alone reports the placeholder `1.10.0` in `/version` and in protocol
 user agents; `GoBuilder` passes the value as `-X github.com/metacubex/mihomo/constant.Version=...` for every build,
-local and CI alike. Bump it whenever the submodule moves onto a new upstream release.
+local and CI alike. The Android gomobile bind appends `-shanlian` to that configured value and does not read
+`constant/version.go`. Bump `core_version` whenever the submodule moves onto a new upstream release.
 
 Architecture detection is automatic. The `--description` flag passed to `flutter_distributor` adds arch suffixes to artifact names, such as `FlClash-0.8.93-macos-arm64.dmg`.
 
@@ -1493,8 +1494,9 @@ Android Studio's Make Project. It takes the AAR apart instead, `classes.jar` as 
 an `unpack<Variant>CoreJniLibs` task per variant handed to `variant.sources.jniLibs.addGeneratedSourceDirectory`; the
 legacy `sourceSets` DSL rejects a task-built directory. Gradle therefore runs the Go build before any task that needs
 its classes or libraries, in every variant and whether or not Flutter started the build, and its up-to-date check over
-`core/` (tests, `testdata` and `cmd/` left out), `build_config.yaml`, the Go version, the ABIs, the API level and the
-NDK version stands in for the hook's cache.
+`core/` (tests, `testdata` and `Clash.Meta/.github` left out; `cmd/` included because GODEBUG is listed from
+`./cmd/core`), the shanlian prepare program and its `lib/src` sources plus `pubspec.yaml` and `pubspec.lock`,
+`build_config.yaml`, the Go version, the ABIs, the API level and the NDK version stands in for the hook's cache.
 
 - `gomobile` and `gobind` come from the `tool` directives in `core/go.mod` and are built into the task's temporary
   directory, so their version moves only with `go.mod`. `bindCore` finds `go` on `PATH` or in the Homebrew and Go
